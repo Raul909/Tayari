@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import '../../providers/basin_provider.dart';
+import 'basin_detail_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -84,6 +85,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             CameraUpdate.newLatLngZoom(
                               LatLng(basin.latitude, basin.longitude),
                               9.0,
+                            ),
+                          );
+                          
+                          // Push to Detail Screen
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => BasinDetailScreen(basin: basin),
                             ),
                           );
                         },

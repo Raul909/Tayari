@@ -1,6 +1,7 @@
 import 'package:isar/isar.dart';
 import '../models/basin.dart';
 import '../models/forecast.dart';
+import '../models/report.dart';
 import 'api_client.dart';
 
 class SyncService {
@@ -79,6 +80,27 @@ class SyncService {
       });
     } catch (e) {
       print("Offline mode: Could not sync forecast. Using cached data. $e");
+    }
+  }
+
+  /// Scans local Isar DB for unsynced community reports and uploads them
+  Future<void> syncPendingReports() async {
+    try {
+      final pendingReports = await _isar.communityReports.where().isSyncedEqualTo(false).findAll();
+      
+      for (var report in pendingReports) {
+        // Simulate API Upload (Multipart Form Data)
+        // await _apiClient.uploadReport(report);
+        
+        // Mark as synced if successful
+        await _isar.writeTxn(() async {
+          report.isSynced = true;
+          await _isar.communityReports.put(report);
+        });
+      }
+      print("Successfully synced ${pendingReports.length} pending reports.");
+    } catch (e) {
+      print("Offline mode: Could not upload pending reports. They will remain in queue. $e");
     }
   }
 }

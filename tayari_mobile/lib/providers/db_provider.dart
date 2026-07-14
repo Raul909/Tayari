@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/basin.dart';
 import '../models/forecast.dart';
+import '../models/report.dart';
 import '../services/api_client.dart';
 import '../services/sync_service.dart';
 
@@ -11,7 +12,7 @@ import '../services/sync_service.dart';
 final isarProvider = FutureProvider<Isar>((ref) async {
   final dir = await getApplicationDocumentsDirectory();
   return await Isar.open(
-    [BasinSchema, ForecastSchema],
+    [BasinSchema, ForecastSchema, CommunityReportSchema],
     directory: dir.path,
   );
 });
