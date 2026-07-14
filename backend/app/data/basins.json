@@ -1,0 +1,181 @@
+{
+  "basins": [
+    {
+      "id": "shabelle",
+      "name": "Shabelle Basin (Beledweyne)",
+      "river": "Shabelle River",
+      "country": "Somalia",
+      "gauge_point": {
+        "latitude": 4.74,
+        "longitude": 45.20
+      },
+      "upstream_point": {
+        "latitude": 7.5,
+        "longitude": 43.5
+      },
+      "flood_threshold_m3s": 350,
+      "warning_threshold_m3s": 250,
+      "historical_median_m3s": 85,
+      "description": "The Shabelle River at Beledweyne is Somalia's most flood-prone point. The November 2023 floods displaced over 500,000 people. The river receives upstream rainfall from the Ethiopian highlands."
+    },
+    {
+      "id": "juba",
+      "name": "Juba Basin (Luuq)",
+      "river": "Juba River",
+      "country": "Somalia",
+      "gauge_point": {
+        "latitude": 3.80,
+        "longitude": 42.54
+      },
+      "upstream_point": {
+        "latitude": 5.5,
+        "longitude": 41.0
+      },
+      "flood_threshold_m3s": 500,
+      "warning_threshold_m3s": 380,
+      "historical_median_m3s": 150,
+      "description": "The Juba River at Luuq is Southern Somalia's primary flood risk. The river originates in the Ethiopian highlands and regularly floods during the Deyr (Oct-Dec) and Gu (Apr-Jun) rain seasons."
+    },
+    {
+      "id": "tana",
+      "name": "Tana Basin (Garsen)",
+      "river": "Tana River",
+      "country": "Kenya",
+      "gauge_point": {
+        "latitude": -2.27,
+        "longitude": 40.12
+      },
+      "upstream_point": {
+        "latitude": -0.5,
+        "longitude": 37.5
+      },
+      "flood_threshold_m3s": 800,
+      "warning_threshold_m3s": 600,
+      "historical_median_m3s": 200,
+      "description": "Kenya's longest river, the Tana, floods at Garsen near its delta. The lower Tana basin is home to vulnerable pastoral and farming communities. Major floods occurred in April-May 2024."
+    }
+  ],
+  "impact_data": {
+    "shabelle": {
+      "MODERATE": {
+        "population_at_risk": 15000,
+        "schools": 3,
+        "clinics": 1,
+        "hospitals": 0,
+        "markets": 2,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 42000,
+        "schools": 6,
+        "clinics": 2,
+        "hospitals": 1,
+        "markets": 4,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 120000,
+        "schools": 12,
+        "clinics": 4,
+        "hospitals": 1,
+        "markets": 8,
+        "flood_zone_km": 10
+      }
+    },
+    "juba": {
+      "MODERATE": {
+        "population_at_risk": 8000,
+        "schools": 2,
+        "clinics": 1,
+        "hospitals": 0,
+        "markets": 1,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 25000,
+        "schools": 4,
+        "clinics": 2,
+        "hospitals": 0,
+        "markets": 3,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 65000,
+        "schools": 8,
+        "clinics": 3,
+        "hospitals": 1,
+        "markets": 5,
+        "flood_zone_km": 10
+      }
+    },
+    "tana": {
+      "MODERATE": {
+        "population_at_risk": 12000,
+        "schools": 4,
+        "clinics": 2,
+        "hospitals": 0,
+        "markets": 2,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 35000,
+        "schools": 8,
+        "clinics": 3,
+        "hospitals": 1,
+        "markets": 5,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 95000,
+        "schools": 15,
+        "clinics": 5,
+        "hospitals": 2,
+        "markets": 9,
+        "flood_zone_km": 10
+      }
+    }
+  },
+  "infrastructure": {
+    "shabelle": [
+      {"name": "Beledweyne General Hospital", "type": "hospital", "latitude": 4.7358, "longitude": 45.2036},
+      {"name": "Beledweyne Primary School", "type": "school", "latitude": 4.7380, "longitude": 45.1980},
+      {"name": "Howlwadaag School", "type": "school", "latitude": 4.7420, "longitude": 45.2100},
+      {"name": "Beledweyne Health Centre", "type": "clinic", "latitude": 4.7300, "longitude": 45.2050},
+      {"name": "Kooshin Clinic", "type": "clinic", "latitude": 4.7450, "longitude": 45.1920},
+      {"name": "Central Market", "type": "market", "latitude": 4.7365, "longitude": 45.2020},
+      {"name": "Bakara School", "type": "school", "latitude": 4.7280, "longitude": 45.2080},
+      {"name": "Towfiq School", "type": "school", "latitude": 4.7500, "longitude": 45.2150},
+      {"name": "Buula Shiikh Clinic", "type": "clinic", "latitude": 4.7200, "longitude": 45.1950},
+      {"name": "Livestock Market", "type": "market", "latitude": 4.7340, "longitude": 45.2100},
+      {"name": "Wardhigley School", "type": "school", "latitude": 4.7550, "longitude": 45.2200},
+      {"name": "Hamar School", "type": "school", "latitude": 4.7150, "longitude": 45.1980}
+    ],
+    "juba": [
+      {"name": "Luuq District Hospital", "type": "hospital", "latitude": 3.8010, "longitude": 42.5420},
+      {"name": "Luuq Primary School", "type": "school", "latitude": 3.7980, "longitude": 42.5380},
+      {"name": "Luuq Health Post", "type": "clinic", "latitude": 3.8050, "longitude": 42.5450},
+      {"name": "Luuq MCH Clinic", "type": "clinic", "latitude": 3.7950, "longitude": 42.5400},
+      {"name": "Town Market", "type": "market", "latitude": 3.8000, "longitude": 42.5430},
+      {"name": "Luuq Secondary School", "type": "school", "latitude": 3.8100, "longitude": 42.5500},
+      {"name": "Buulow School", "type": "school", "latitude": 3.7900, "longitude": 42.5350},
+      {"name": "Kabasa Health Centre", "type": "clinic", "latitude": 3.8150, "longitude": 42.5550}
+    ],
+    "tana": [
+      {"name": "Garsen Sub-County Hospital", "type": "hospital", "latitude": -2.2700, "longitude": 40.1190},
+      {"name": "Garsen Primary School", "type": "school", "latitude": -2.2680, "longitude": 40.1210},
+      {"name": "Garsen Health Centre", "type": "clinic", "latitude": -2.2720, "longitude": 40.1180},
+      {"name": "Wenje Primary School", "type": "school", "latitude": -2.2600, "longitude": 40.1250},
+      {"name": "Chara Clinic", "type": "clinic", "latitude": -2.2750, "longitude": 40.1150},
+      {"name": "Garsen Market", "type": "market", "latitude": -2.2690, "longitude": 40.1200},
+      {"name": "Kipini Secondary School", "type": "school", "latitude": -2.2500, "longitude": 40.1300},
+      {"name": "Hewani School", "type": "school", "latitude": -2.2800, "longitude": 40.1100},
+      {"name": "Tana River Health Post", "type": "clinic", "latitude": -2.2850, "longitude": 40.1050},
+      {"name": "Garsen Secondary School", "type": "school", "latitude": -2.2650, "longitude": 40.1230},
+      {"name": "Livelihoods Market", "type": "market", "latitude": -2.2710, "longitude": 40.1160},
+      {"name": "Saka School", "type": "school", "latitude": -2.2900, "longitude": 40.1000},
+      {"name": "Bangale Primary School", "type": "school", "latitude": -2.2950, "longitude": 40.0950},
+      {"name": "Nanighi Health Centre", "type": "clinic", "latitude": -2.2550, "longitude": 40.1280},
+      {"name": "Sera Clinic", "type": "clinic", "latitude": -2.3000, "longitude": 40.0900}
+    ]
+  }
+}

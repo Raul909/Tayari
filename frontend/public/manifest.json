@@ -1,0 +1,22 @@
+{
+  "name": "Tayari — Flood Early Warning",
+  "short_name": "Tayari",
+  "description": "AI-powered flood early warning & early action system for the IGAD region",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A1628",
+  "theme_color": "#0A1628",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
