@@ -104,6 +104,15 @@ npm run dev
 ```
 Head over to `http://localhost:3000` and you should see the MapLibre dashboard lighting up with live basin data!
 
+### Running the Mobile App (Flutter)
+The native mobile app is optimized for low-bandwidth environments in the IGAD region, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories.
+```bash
+cd tayari_mobile
+flutter pub get
+flutter run
+```
+*Note: The mobile app requires Camera and GPS permissions to submit geotagged community flood reports. Reports made while offline will be queued and synced automatically once a connection is restored.*
+
 ---
 
 ## 🛠️ Tech Stack
@@ -111,9 +120,11 @@ Head over to `http://localhost:3000` and you should see the MapLibre dashboard l
 I chose tools that are fast, reliable, and perfectly suited for a machine-learning-driven web app:
 
 - **Backend:** FastAPI (Python) — *Blazing fast, async-first, and natively speaks ML.*
-- **Frontend:** Next.js 14 (App Router) & Vanilla CSS — *SSR for performance, PWA ready, and a custom glassmorphism design system.*
+- **Frontend (Web):** Next.js 14 (App Router) & Vanilla CSS — *SSR for performance, PWA ready, and a custom glassmorphism design system.*
+- **Frontend (Mobile):** Flutter & Riverpod — *Native ARM performance, rendering vector maps instantly.*
+- **Databases:** Isar Database — *Ultra-fast offline-first NoSQL caching for the mobile app.*
 - **ML Model:** LightGBM — *Fast training on tabular data without needing a GPU.*
-- **Maps & Viz:** MapLibre GL JS & Chart.js — *Beautiful, interactive, and open-source.*
+- **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
 - **AI & Comms:** Claude API & Africa's Talking — *Best-in-class multilingual text generation and reliable East African SMS delivery.*
 
 ---
