@@ -46,18 +46,28 @@ export default function Dashboard() {
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: 'https://tiles.openfreemap.org/styles/positron',
-      center: [MAP_CENTER.lng, MAP_CENTER.lat],
-      zoom: MAP_CENTER.zoom,
-      attributionControl: true,
-    });
+    try {
+      const map = new maplibregl.Map({
+        container: mapRef.current,
+        style: 'https://tiles.openfreemap.org/styles/positron',
+        center: [MAP_CENTER.lng, MAP_CENTER.lat],
+        zoom: MAP_CENTER.zoom,
+        attributionControl: true,
+      });
 
-    map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
-    mapInstance.current = map;
+      map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+      mapInstance.current = map;
+    } catch (e) {
+      console.error("Failed to initialize map:", e);
+      setError("Failed to initialize map due to a WebGL error. Please check your browser settings.");
+    }
 
-    return () => map.remove();
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+      }
+    };
   }, []);
 
   // Add basin markers when basins are loaded
