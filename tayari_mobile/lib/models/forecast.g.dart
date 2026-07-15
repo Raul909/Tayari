@@ -37,33 +37,43 @@ const ForecastSchema = CollectionSchema(
       name: r'clinicsAtRisk',
       type: IsarType.long,
     ),
-    r'lastSynced': PropertySchema(
+    r'dischargeSeries': PropertySchema(
       id: 4,
+      name: r'dischargeSeries',
+      type: IsarType.doubleList,
+    ),
+    r'floodThreshold': PropertySchema(
+      id: 5,
+      name: r'floodThreshold',
+      type: IsarType.double,
+    ),
+    r'lastSynced': PropertySchema(
+      id: 6,
       name: r'lastSynced',
       type: IsarType.dateTime,
     ),
     r'peopleAtRisk': PropertySchema(
-      id: 5,
+      id: 7,
       name: r'peopleAtRisk',
       type: IsarType.long,
     ),
     r'probability': PropertySchema(
-      id: 6,
+      id: 8,
       name: r'probability',
       type: IsarType.double,
     ),
     r'riskLevel': PropertySchema(
-      id: 7,
+      id: 9,
       name: r'riskLevel',
       type: IsarType.string,
     ),
     r'schoolsAtRisk': PropertySchema(
-      id: 8,
+      id: 10,
       name: r'schoolsAtRisk',
       type: IsarType.long,
     ),
     r'thresholdExceedanceDays': PropertySchema(
-      id: 9,
+      id: 11,
       name: r'thresholdExceedanceDays',
       type: IsarType.long,
     )
@@ -117,6 +127,7 @@ int _forecastEstimateSize(
     }
   }
   bytesCount += 3 + object.basinId.length * 3;
+  bytesCount += 3 + object.dischargeSeries.length * 8;
   bytesCount += 3 + object.riskLevel.length * 3;
   return bytesCount;
 }
@@ -131,12 +142,14 @@ void _forecastSerialize(
   writer.writeStringList(offsets[1], object.advisoryValues);
   writer.writeString(offsets[2], object.basinId);
   writer.writeLong(offsets[3], object.clinicsAtRisk);
-  writer.writeDateTime(offsets[4], object.lastSynced);
-  writer.writeLong(offsets[5], object.peopleAtRisk);
-  writer.writeDouble(offsets[6], object.probability);
-  writer.writeString(offsets[7], object.riskLevel);
-  writer.writeLong(offsets[8], object.schoolsAtRisk);
-  writer.writeLong(offsets[9], object.thresholdExceedanceDays);
+  writer.writeDoubleList(offsets[4], object.dischargeSeries);
+  writer.writeDouble(offsets[5], object.floodThreshold);
+  writer.writeDateTime(offsets[6], object.lastSynced);
+  writer.writeLong(offsets[7], object.peopleAtRisk);
+  writer.writeDouble(offsets[8], object.probability);
+  writer.writeString(offsets[9], object.riskLevel);
+  writer.writeLong(offsets[10], object.schoolsAtRisk);
+  writer.writeLong(offsets[11], object.thresholdExceedanceDays);
 }
 
 Forecast _forecastDeserialize(
@@ -150,13 +163,15 @@ Forecast _forecastDeserialize(
   object.advisoryValues = reader.readStringList(offsets[1]) ?? [];
   object.basinId = reader.readString(offsets[2]);
   object.clinicsAtRisk = reader.readLong(offsets[3]);
+  object.dischargeSeries = reader.readDoubleList(offsets[4]) ?? [];
+  object.floodThreshold = reader.readDouble(offsets[5]);
   object.id = id;
-  object.lastSynced = reader.readDateTime(offsets[4]);
-  object.peopleAtRisk = reader.readLong(offsets[5]);
-  object.probability = reader.readDouble(offsets[6]);
-  object.riskLevel = reader.readString(offsets[7]);
-  object.schoolsAtRisk = reader.readLong(offsets[8]);
-  object.thresholdExceedanceDays = reader.readLongOrNull(offsets[9]);
+  object.lastSynced = reader.readDateTime(offsets[6]);
+  object.peopleAtRisk = reader.readLong(offsets[7]);
+  object.probability = reader.readDouble(offsets[8]);
+  object.riskLevel = reader.readString(offsets[9]);
+  object.schoolsAtRisk = reader.readLong(offsets[10]);
+  object.thresholdExceedanceDays = reader.readLongOrNull(offsets[11]);
   return object;
 }
 
@@ -176,16 +191,20 @@ P _forecastDeserializeProp<P>(
     case 3:
       return (reader.readLong(offset)) as P;
     case 4:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readDoubleList(offset) ?? []) as P;
     case 5:
-      return (reader.readLong(offset)) as P;
-    case 6:
       return (reader.readDouble(offset)) as P;
+    case 6:
+      return (reader.readDateTime(offset)) as P;
     case 7:
-      return (reader.readString(offset)) as P;
-    case 8:
       return (reader.readLong(offset)) as P;
+    case 8:
+      return (reader.readDouble(offset)) as P;
     case 9:
+      return (reader.readString(offset)) as P;
+    case 10:
+      return (reader.readLong(offset)) as P;
+    case 11:
       return (reader.readLongOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1016,6 +1035,225 @@ extension ForecastQueryFilter
     });
   }
 
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesElementEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'dischargeSeries',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesElementGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'dischargeSeries',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesElementLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'dischargeSeries',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesElementBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'dischargeSeries',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesLengthEqualTo(int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'dischargeSeries',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'dischargeSeries',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'dischargeSeries',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'dischargeSeries',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'dischargeSeries',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      dischargeSeriesLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'dischargeSeries',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition> floodThresholdEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'floodThreshold',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      floodThresholdGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'floodThreshold',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition>
+      floodThresholdLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'floodThreshold',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterFilterCondition> floodThresholdBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'floodThreshold',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
   QueryBuilder<Forecast, Forecast, QAfterFilterCondition> idEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -1529,6 +1767,18 @@ extension ForecastQuerySortBy on QueryBuilder<Forecast, Forecast, QSortBy> {
     });
   }
 
+  QueryBuilder<Forecast, Forecast, QAfterSortBy> sortByFloodThreshold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'floodThreshold', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterSortBy> sortByFloodThresholdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'floodThreshold', Sort.desc);
+    });
+  }
+
   QueryBuilder<Forecast, Forecast, QAfterSortBy> sortByLastSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lastSynced', Sort.asc);
@@ -1627,6 +1877,18 @@ extension ForecastQuerySortThenBy
   QueryBuilder<Forecast, Forecast, QAfterSortBy> thenByClinicsAtRiskDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'clinicsAtRisk', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterSortBy> thenByFloodThreshold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'floodThreshold', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QAfterSortBy> thenByFloodThresholdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'floodThreshold', Sort.desc);
     });
   }
 
@@ -1744,6 +2006,18 @@ extension ForecastQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Forecast, Forecast, QDistinct> distinctByDischargeSeries() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'dischargeSeries');
+    });
+  }
+
+  QueryBuilder<Forecast, Forecast, QDistinct> distinctByFloodThreshold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'floodThreshold');
+    });
+  }
+
   QueryBuilder<Forecast, Forecast, QDistinct> distinctByLastSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lastSynced');
@@ -1814,6 +2088,19 @@ extension ForecastQueryProperty
   QueryBuilder<Forecast, int, QQueryOperations> clinicsAtRiskProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'clinicsAtRisk');
+    });
+  }
+
+  QueryBuilder<Forecast, List<double>, QQueryOperations>
+      dischargeSeriesProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'dischargeSeries');
+    });
+  }
+
+  QueryBuilder<Forecast, double, QQueryOperations> floodThresholdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'floodThreshold');
     });
   }
 
