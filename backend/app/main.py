@@ -84,7 +84,7 @@ if ".pages.dev" in settings.frontend_url or ".workers.dev" in settings.frontend_
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https://.*\.tayari\.pages\.dev",  # preview deploys
+    allow_origin_regex=r"https://(.*\.)?tayari\.pages\.dev",  # main and preview deploys
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -100,8 +100,7 @@ _uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
-@app.get("/")
-@limiter.limit("10/minute")
+@app.get("/api/info")
 async def root(request: Request):
     """Health check and API info."""
     return {
@@ -119,6 +118,7 @@ async def root(request: Request):
             "reports": "/api/reports",
         },
     }
+
 
 
 @app.get("/health")
