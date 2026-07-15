@@ -2,7 +2,7 @@ name = "tayari-pinger"
 main = "src/index.js"
 compatibility_date = "2024-07-15"
 
-# The Cloudflare Cron Trigger scheduled every 10 minutes.
-# This prevents the Render free tier from sleeping (which happens after 15 minutes of inactivity).
+# Ping Render every 5 minutes to prevent the free tier from sleeping
+# (Render sleeps after 15 minutes of inactivity — 5min gives comfortable margin)
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/5 * * * *"]

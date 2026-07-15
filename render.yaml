@@ -9,6 +9,8 @@ services:
         value: 10000
       - key: ENVIRONMENT
         value: production
+      - key: FRONTEND_URL
+        value: https://tayari.pages.dev
       - key: GROQ_API_KEY
         sync: false
       - key: AT_API_KEY

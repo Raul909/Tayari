@@ -54,7 +54,7 @@ export default function Dashboard() {
       setError(null);
     } catch (err) {
       console.error('Failed to load basins:', err);
-      const msg = 'Could not reach the Tayari API. Is the backend running on port 8000?';
+      const msg = 'Could not reach the Tayari API. Please check your connection or try again in a moment.';
       setError(msg);
       notify({ type: 'error', title: 'Connection failed', message: msg });
     } finally {

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:prod": "NEXT_PUBLIC_API_URL=https://tayari-api.onrender.com next build",
+    "deploy": "npm run build:prod && npx wrangler pages deploy out",
     "start": "next start",
     "lint": "eslint"
   },

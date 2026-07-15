@@ -76,10 +76,9 @@ _cors_origins = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3000",
+    # Cloudflare Pages production domain
+    "https://tayari.pages.dev",
 ]
-# Add Cloudflare Pages domain if frontend_url is set to one
-if ".pages.dev" in settings.frontend_url or ".workers.dev" in settings.frontend_url:
-    _cors_origins.append(settings.frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
