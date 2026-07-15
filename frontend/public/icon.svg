@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tayari">
+  <rect width="512" height="512" rx="96" fill="#b7562f"/>
+  <path d="M96 300c40 0 40 34 80 34s40-34 80-34 40 34 80 34 40-34 80-34"
+        fill="none" stroke="#faf9f6" stroke-width="26" stroke-linecap="round"/>
+  <path d="M96 372c40 0 40 34 80 34s40-34 80-34 40 34 80 34 40-34 80-34"
+        fill="none" stroke="#faf9f6" stroke-width="26" stroke-linecap="round" opacity="0.55"/>
+  <path d="M256 108c34 46 58 82 58 116a58 58 0 0 1-116 0c0-34 24-70 58-116z" fill="#faf9f6"/>
+</svg>

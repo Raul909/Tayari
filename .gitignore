@@ -16,10 +16,16 @@ node_modules/
 .next/
 out/
 
-# Environment
+# Environment (CRITICAL — never commit API keys)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+backend/.env
+frontend/.env
+frontend/.env.local
+tayari_mobile/.env
 
 # IDE
 .vscode/
@@ -40,10 +46,6 @@ Thumbs.db
 *.pkl
 *.joblib
 models/*.bin
-.env
-backend/.env
-frontend/.env
-node_modules/
+
+# Backend virtualenv
 backend/venv/
-.next/
-__pycache__/

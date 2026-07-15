@@ -66,8 +66,8 @@ For this hackathon, I've focused deeply on three high-risk river basins in the I
 | Basin | River | Country | Gauge Coordinates | Historical Context |
 |-------|-------|---------|----------------------|-----------------|
 | **Shabelle** | Shabelle River | Somalia | 4.74°N, 45.20°E *(Beledweyne)* | Nov 2023 — 500K displaced |
-| **Juba** | Juba River | Somalia | 0.35°N, 42.54°E *(Luuq)* | Nov 2023 |
-| **Tana** | Tana River | Kenya | -1.80°S, 40.02°E *(Garsen)* | Apr-May 2024 |
+| **Juba** | Juba River | Somalia | 3.80°N, 42.54°E *(Luuq)* | Nov 2023 |
+| **Tana** | Tana River | Kenya | 2.27°S, 40.12°E *(Garsen)* | Apr-May 2024 |
 
 *Note: While the current implementation focuses solely on floods to ensure depth and quality, the architecture is designed to be easily extensible for other regional hazards like drought and locust swarms.*
 
@@ -105,13 +105,13 @@ npm run dev
 Head over to `http://localhost:3000` and you should see the MapLibre dashboard lighting up with live basin data!
 
 ### Running the Mobile App (Flutter)
-The native mobile app is optimized for low-bandwidth environments in the IGAD region, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories.
+The native mobile app is optimized for low-bandwidth environments in the IGAD region, featuring offline-first caching (Isar), aggressive photo compression, and local caching of multilingual advisories. Map tiles stream from OpenFreeMap.
 ```bash
 cd tayari_mobile
 flutter pub get
 flutter run
 ```
-*Note: The mobile app requires Camera and GPS permissions to submit geotagged community flood reports. Reports made while offline will be queued and synced automatically once a connection is restored.*
+*Note: The mobile app requires Camera and GPS permissions to submit geotagged community flood reports. Reports are saved to a local queue and uploaded to the backend automatically once a connection is available. The Android emulator reaches the local backend at `10.0.2.2:8000`; for a physical device, point it at your machine with `--dart-define=API_BASE_URL=http://<your-ip>:8000/api`.*
 
 ---
 
@@ -119,12 +119,12 @@ flutter run
 
 I chose tools that are fast, reliable, and perfectly suited for a machine-learning-driven web app:
 
-- **Backend:** FastAPI (Python) — *Blazing fast, async-first, and natively speaks ML.*
-- **Frontend (Web):** Next.js 14 (App Router) & Vanilla CSS — *SSR for performance, PWA ready, and a custom glassmorphism design system.*
+- **Backend:** FastAPI (Python) — *Blazing fast, async-first, and natively speaks ML. Upstream data feeds are fetched concurrently to keep responses snappy.*
+- **Frontend (Web):** Next.js (App Router) & vanilla CSS — *SSR for performance, PWA ready, and a calm, minimal, paper-toned design system (system fonts, no web-font fetch).*
 - **Frontend (Mobile):** Flutter & Riverpod — *Native ARM performance, rendering vector maps instantly.*
 - **Databases:** Isar Database — *Ultra-fast offline-first NoSQL caching for the mobile app.*
 - **ML Model:** LightGBM — *Fast training on tabular data without needing a GPU.*
-- **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
+- **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl, Chart.js & fl_chart — *Beautiful, interactive, and open-source.*
 - **AI & Comms:** Claude API & Africa's Talking — *Best-in-class multilingual text generation and reliable East African SMS delivery.*
 
 ---

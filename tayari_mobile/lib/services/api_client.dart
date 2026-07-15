@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/report.dart';
+import 'groq_service.dart';
 
 /// Maps the app's human-readable report status to the backend enum value
 /// (backend ReportStatus: water_rising | road_flooded | evacuating | all_clear).
@@ -91,5 +92,44 @@ class ApiClient {
       'latitude': report.latitude,
       'longitude': report.longitude,
     });
+  }
+
+  /// Fetch the AI-generated advisory for a basin from the backend.
+  /// Falls back to direct Groq API call if the backend is unreachable.
+  Future<Map<String, dynamic>?> getAdvisory(
+      String basinId, String role, String language) async {
+    try {
+      final response = await _dio.get(
+        '/advisory/$basinId',
+        queryParameters: {'role': role, 'language': language},
+      );
+      return response.data;
+    } catch (e) {
+      // Backend unreachable — try direct Groq API as fallback
+      return _getAdvisoryViaGroq(basinId, role, language);
+    }
+  }
+
+  /// Direct Groq API fallback for advisory generation.
+  Future<Map<String, dynamic>?> _getAdvisoryViaGroq(
+      String basinId, String role, String language) async {
+    if (!GroqService.isAvailable) return null;
+
+    final groq = GroqService();
+    final advisory = await groq.generateAdvisory(
+      basinName: basinId,
+      riverName: basinId,
+      country: 'East Africa',
+      riskLevel: 'MODERATE',
+      probability: 0.5,
+      populationAtRisk: 5000,
+      role: role,
+      language: language,
+    );
+
+    if (advisory != null) {
+      return {'advisory': advisory};
+    }
+    return null;
   }
 }

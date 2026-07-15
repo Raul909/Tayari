@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tayari — Web Dashboard
 
-## Getting Started
+The coordinator-facing dashboard for **Tayari**, the flood early warning system.
+Built with Next.js (App Router) and vanilla CSS.
 
-First, run the development server:
+## What's here
+
+- **Dashboard (`/`)** — a MapLibre map of the monitored basins with live risk
+  markers, community report pins, a risk gauge, a 7-day discharge chart, an
+  impact assessment, and role/language-tailored advisories.
+- **Alerts (`/alerts`)** — compose and send multilingual SMS advisories, with a
+  live SMS preview and a send history.
+- **Report (`/report`)** — submit geotagged community reports that show up as
+  pins on the dashboard map.
+
+## Getting started
+
+The dashboard talks to the FastAPI backend (default `http://localhost:8000`).
+Start the backend first (see the root `README.md`), then:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Point the app at a non-default backend with an env var:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+NEXT_PUBLIC_API_URL=https://your-api.example.com npm run dev
+```
 
-## Learn More
+## Design notes
 
-To learn more about Next.js, take a look at the following resources:
+The UI is intentionally calm and minimal — a warm paper background, one
+terracotta accent, muted (but still unambiguous) risk colours, and system fonts
+(no web-font fetch, so nothing blocks first paint). The map does the talking.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Command | Description |
+|---|---|
+| `npm run dev` | Start the dev server |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | Lint |

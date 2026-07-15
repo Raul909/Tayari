@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("🌊 Tayari starting up...")
     logger.info(f"   Environment: {settings.environment}")
-    logger.info(f"   Anthropic API: {'configured' if settings.anthropic_api_key else 'NOT configured (using templates)'}")
+    logger.info(f"   Groq API: {'configured' if settings.groq_api_key else 'NOT configured (using templates)'}")
     logger.info(f"   Africa's Talking: {'configured' if settings.at_api_key else 'NOT configured (simulated SMS)'}")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
     yield
@@ -70,15 +70,21 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
-# CORS — allow frontend dev server
+# CORS — allow frontend (dev + production)
+_cors_origins = [
+    settings.frontend_url,
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+]
+# Add Cloudflare Pages domain if frontend_url is set to one
+if ".pages.dev" in settings.frontend_url or ".workers.dev" in settings.frontend_url:
+    _cors_origins.append(settings.frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.frontend_url,
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"https://.*\.tayari\.pages\.dev",  # preview deploys
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

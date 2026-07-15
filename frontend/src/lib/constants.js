@@ -35,17 +35,17 @@ export const BASINS = {
 export const MAP_CENTER = { lat: 2.0, lng: 42.0, zoom: 5 };
 
 export const RISK_COLORS = {
-  LOW: '#22C55E',
-  MODERATE: '#EAB308',
-  HIGH: '#EF4444',
-  EXTREME: '#991B1B',
+  LOW: '#3F7D53',
+  MODERATE: '#B0812C',
+  HIGH: '#C0432B',
+  EXTREME: '#83291A',
 };
 
 export const RISK_BG_COLORS = {
-  LOW: 'rgba(34, 197, 94, 0.15)',
-  MODERATE: 'rgba(234, 179, 8, 0.15)',
-  HIGH: 'rgba(239, 68, 68, 0.15)',
-  EXTREME: 'rgba(153, 27, 27, 0.2)',
+  LOW: 'rgba(63, 125, 83, 0.12)',
+  MODERATE: 'rgba(176, 129, 44, 0.14)',
+  HIGH: 'rgba(192, 67, 43, 0.12)',
+  EXTREME: 'rgba(131, 41, 26, 0.14)',
 };
 
 export const ROLES = [
@@ -57,16 +57,16 @@ export const ROLES = [
 ];
 
 export const LANGUAGES = [
-  { value: 'en', label: 'English', flag: '🇬🇧' },
-  { value: 'so', label: 'Somali', flag: '🇸🇴' },
-  { value: 'sw', label: 'Swahili', flag: '🇰🇪' },
-  { value: 'am', label: 'Amharic', flag: '🇪🇹' },
-  { value: 'om', label: 'Oromo', flag: '🇪🇹' },
+  { value: 'en', label: 'English' },
+  { value: 'so', label: 'Somali' },
+  { value: 'sw', label: 'Swahili' },
+  { value: 'am', label: 'Amharic' },
+  { value: 'om', label: 'Oromo' },
 ];
 
 export const REPORT_STATUSES = [
-  { value: 'water_rising', label: '🌊 Water Rising', color: '#EAB308' },
-  { value: 'road_flooded', label: '🚧 Road Flooded', color: '#EF4444' },
-  { value: 'evacuating', label: '🏃 Evacuating', color: '#991B1B' },
-  { value: 'all_clear', label: '✅ All Clear', color: '#22C55E' },
+  { value: 'water_rising', label: 'Water rising', color: '#B0812C' },
+  { value: 'road_flooded', label: 'Road flooded', color: '#C0432B' },
+  { value: 'evacuating', label: 'Evacuating', color: '#83291A' },
+  { value: 'all_clear', label: 'All clear', color: '#3F7D53' },
 ];

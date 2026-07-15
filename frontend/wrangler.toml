@@ -1,0 +1,5 @@
+# Cloudflare Pages deployment configuration
+# Deploy with: npx wrangler pages deploy out
+name = "tayari"
+pages_build_output_dir = "out"
+compatibility_date = "2025-07-01"

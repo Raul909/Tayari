@@ -7,19 +7,16 @@ export default function Navbar() {
   const pathname = usePathname();
 
   const links = [
-    { href: '/', label: '🗺️ Dashboard' },
-    { href: '/alerts', label: '📡 Alerts' },
-    { href: '/report', label: '📋 Report' },
+    { href: '/', label: 'Dashboard' },
+    { href: '/alerts', label: 'Alerts' },
+    { href: '/report', label: 'Report' },
   ];
 
   return (
     <nav className="navbar">
       <Link href="/" className="navbar-brand">
-        <div className="navbar-logo">🌊</div>
-        <div>
-          <div className="navbar-title">Tayari</div>
-          <div className="navbar-subtitle">Flood Early Warning System</div>
-        </div>
+        <div className="navbar-title">Tayari</div>
+        <div className="navbar-subtitle">Flood Early Warning</div>
       </Link>
 
       <div className="navbar-nav">

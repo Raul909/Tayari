@@ -1,11 +1,12 @@
 """
-AI Advisory Generator — uses Claude (Anthropic) or falls back to template-based generation.
+AI Advisory Generator — uses Groq (fast LLM inference) or falls back to template-based generation.
 
 Generates plain-language, role-specific, multilingual advisories that tell people
 what to DO, not just what the forecast IS. This is the "communicated" layer —
 closing the gap between information generated and information acted upon.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -17,13 +18,13 @@ from app.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Try importing Anthropic
+# Try importing Groq
 try:
-    import anthropic
-    HAS_ANTHROPIC = True
+    from groq import Groq
+    HAS_GROQ = True
 except ImportError:
-    HAS_ANTHROPIC = False
-    logger.warning("Anthropic SDK not installed — using template-based advisories")
+    HAS_GROQ = False
+    logger.warning("Groq SDK not installed — using template-based advisories")
 
 # Advisory cache (risk_level + role + language → advisory)
 _advisory_cache: dict[str, tuple[Advisory, datetime]] = {}
@@ -80,16 +81,16 @@ async def generate_advisory(
         if datetime.utcnow() - cached_time < timedelta(hours=CACHE_TTL_HOURS):
             return cached_advisory
 
-    # Try Claude API
-    if HAS_ANTHROPIC and settings.anthropic_api_key:
+    # Try Groq API (fast LLM inference)
+    if HAS_GROQ and settings.groq_api_key:
         try:
-            advisory = await _generate_with_claude(
+            advisory = await _generate_with_groq(
                 risk, impact, basin_name, river_name, country, role, language
             )
             _advisory_cache[cache_key] = (advisory, datetime.utcnow())
             return advisory
         except Exception as e:
-            logger.error(f"Claude advisory generation failed: {e}")
+            logger.error(f"Groq advisory generation failed: {e}")
 
     # Fall back to templates
     advisory = _generate_template_advisory(
@@ -99,7 +100,7 @@ async def generate_advisory(
     return advisory
 
 
-async def _generate_with_claude(
+async def _generate_with_groq(
     risk: FloodRiskScore,
     impact: ImpactAssessment,
     basin_name: str,
@@ -108,8 +109,8 @@ async def _generate_with_claude(
     role: UserRole,
     language: Language,
 ) -> Advisory:
-    """Generate advisory using Claude API."""
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    """Generate advisory using Groq API (fast LLM inference)."""
+    client = Groq(api_key=settings.groq_api_key)
 
     prompt = f"""You are Tayari, an AI flood early-warning system for East Africa. Generate a flood advisory.
 
@@ -149,14 +150,18 @@ ACTIONS:
 
 Write the ENTIRE response in {LANGUAGE_NAMES[language]}. Do NOT include any English if the target language is not English."""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    # The Groq SDK client is synchronous; run it off the event loop
+    # so the generation doesn't block other concurrent requests.
+    response = await asyncio.to_thread(
+        client.chat.completions.create,
+        model=settings.groq_model,
+        messages=[{"role": "user", "content": prompt}],
         max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}]
+        temperature=0.7,
     )
 
     # Parse the response
-    text = response.content[0].text
+    text = response.choices[0].message.content
     return _parse_advisory_response(text, risk, role, language)
 
 

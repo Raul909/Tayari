@@ -5,6 +5,7 @@ These are the core endpoints that the frontend consumes.
 """
 
 import json
+import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -50,6 +51,58 @@ def _get_basin(basin_id: str) -> BasinConfig:
 
 # ─── Basin Endpoints ──────────────────────────────────────────────────────────
 
+async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
+    """Build a summary for a single basin. Fetches its two data feeds in parallel."""
+    try:
+        # Discharge + rainfall are independent — fetch them concurrently.
+        discharge, rainfall = await asyncio.gather(
+            fetch_river_discharge(
+                basin.gauge_point.latitude,
+                basin.gauge_point.longitude,
+                forecast_days=3,
+                past_days=3,
+            ),
+            fetch_upstream_rainfall(
+                basin.upstream_point.latitude,
+                basin.upstream_point.longitude,
+                forecast_days=3,
+                past_days=3,
+            ),
+        )
+
+        risk = compute_flood_risk(basin, discharge, rainfall)
+
+        # Current discharge = most recent available past data point
+        current_discharge = None
+        for d in reversed(discharge):
+            if d.discharge_mean is not None:
+                current_discharge = d.discharge_mean
+                break
+
+        return BasinSummary(
+            id=basin.id,
+            name=basin.name,
+            river=basin.river,
+            country=basin.country,
+            latitude=basin.gauge_point.latitude,
+            longitude=basin.gauge_point.longitude,
+            current_risk=risk.risk_level,
+            current_discharge=current_discharge,
+            flood_probability=risk.probability,
+            last_updated=datetime.utcnow(),
+        )
+    except Exception as e:
+        logger.error(f"Error fetching data for basin {basin.id}: {e}")
+        return BasinSummary(
+            id=basin.id,
+            name=basin.name,
+            river=basin.river,
+            country=basin.country,
+            latitude=basin.gauge_point.latitude,
+            longitude=basin.gauge_point.longitude,
+        )
+
+
 @router.get("/basins", response_model=list[BasinSummary])
 async def list_basins():
     """
@@ -57,59 +110,12 @@ async def list_basins():
 
     Returns quick-loading summary data. For full forecasts,
     use GET /forecasts/{basin_id}.
+
+    All basins are summarized concurrently so total latency is roughly one
+    upstream round-trip rather than the sum across every basin.
     """
     basins = _load_basins()
-    summaries = []
-
-    for basin in basins:
-        try:
-            # Fetch minimal discharge data for current status
-            discharge = await fetch_river_discharge(
-                basin.gauge_point.latitude,
-                basin.gauge_point.longitude,
-                forecast_days=3,
-                past_days=3,
-            )
-            rainfall = await fetch_upstream_rainfall(
-                basin.upstream_point.latitude,
-                basin.upstream_point.longitude,
-                forecast_days=3,
-                past_days=3,
-            )
-
-            risk = compute_flood_risk(basin, discharge, rainfall)
-
-            # Get current discharge (most recent past data point)
-            current_discharge = None
-            for d in reversed(discharge):
-                if d.discharge_mean is not None:
-                    current_discharge = d.discharge_mean
-                    break
-
-            summaries.append(BasinSummary(
-                id=basin.id,
-                name=basin.name,
-                river=basin.river,
-                country=basin.country,
-                latitude=basin.gauge_point.latitude,
-                longitude=basin.gauge_point.longitude,
-                current_risk=risk.risk_level,
-                current_discharge=current_discharge,
-                flood_probability=risk.probability,
-                last_updated=datetime.utcnow(),
-            ))
-        except Exception as e:
-            logger.error(f"Error fetching data for basin {basin.id}: {e}")
-            summaries.append(BasinSummary(
-                id=basin.id,
-                name=basin.name,
-                river=basin.river,
-                country=basin.country,
-                latitude=basin.gauge_point.latitude,
-                longitude=basin.gauge_point.longitude,
-            ))
-
-    return summaries
+    return await asyncio.gather(*(_summarize_basin(b) for b in basins))
 
 
 # ─── Forecast Endpoints ──────────────────────────────────────────────────────
@@ -129,19 +135,20 @@ async def get_forecast(
     """
     basin = _get_basin(basin_id)
 
-    # Fetch data from both APIs
-    discharge_data = await fetch_river_discharge(
-        basin.gauge_point.latitude,
-        basin.gauge_point.longitude,
-        forecast_days=7,
-        past_days=30,
-    )
-
-    rainfall_data = await fetch_upstream_rainfall(
-        basin.upstream_point.latitude,
-        basin.upstream_point.longitude,
-        forecast_days=7,
-        past_days=14,
+    # Fetch data from both APIs concurrently
+    discharge_data, rainfall_data = await asyncio.gather(
+        fetch_river_discharge(
+            basin.gauge_point.latitude,
+            basin.gauge_point.longitude,
+            forecast_days=7,
+            past_days=30,
+        ),
+        fetch_upstream_rainfall(
+            basin.upstream_point.latitude,
+            basin.upstream_point.longitude,
+            forecast_days=7,
+            past_days=14,
+        ),
     )
 
     # Compute flood risk
@@ -243,17 +250,19 @@ async def get_advisory(
     """
     basin = _get_basin(basin_id)
 
-    discharge_data = await fetch_river_discharge(
-        basin.gauge_point.latitude,
-        basin.gauge_point.longitude,
-        forecast_days=3,
-        past_days=7,
-    )
-    rainfall_data = await fetch_upstream_rainfall(
-        basin.upstream_point.latitude,
-        basin.upstream_point.longitude,
-        forecast_days=3,
-        past_days=7,
+    discharge_data, rainfall_data = await asyncio.gather(
+        fetch_river_discharge(
+            basin.gauge_point.latitude,
+            basin.gauge_point.longitude,
+            forecast_days=3,
+            past_days=7,
+        ),
+        fetch_upstream_rainfall(
+            basin.upstream_point.latitude,
+            basin.upstream_point.longitude,
+            forecast_days=3,
+            past_days=7,
+        ),
     )
 
     risk = compute_flood_risk(basin, discharge_data, rainfall_data)

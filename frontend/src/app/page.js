@@ -2,8 +2,9 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import { fetchBasins, fetchForecast } from '@/lib/api';
-import { RISK_COLORS, MAP_CENTER, ROLES, LANGUAGES } from '@/lib/constants';
+import { fetchBasins, fetchForecast, fetchReports } from '@/lib/api';
+import { RISK_COLORS, MAP_CENTER, ROLES, LANGUAGES, REPORT_STATUSES } from '@/lib/constants';
+import { useToast } from '@/components/Toast';
 import RiskGauge from '@/components/RiskGauge';
 import ForecastChart from '@/components/ForecastChart';
 import AdvisoryCard from '@/components/AdvisoryCard';
@@ -13,8 +14,12 @@ export default function Dashboard() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersRef = useRef([]);
+  const reportMarkersRef = useRef([]);
+  // Monotonic token so a slow forecast response can't overwrite a newer one.
+  const forecastReqId = useRef(0);
 
   const [basins, setBasins] = useState([]);
+  const [reports, setReports] = useState([]);
   const [selectedBasin, setSelectedBasin] = useState(null);
   const [forecast, setForecast] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,9 +28,22 @@ export default function Dashboard() {
   const [language, setLanguage] = useState('en');
   const [error, setError] = useState(null);
 
-  // Load basins on mount
+  // Refs mirror role/language so map markers (created once) always read the
+  // current values instead of a value captured when the marker was made.
+  const roleRef = useRef(role);
+  const languageRef = useRef(language);
+  useEffect(() => {
+    roleRef.current = role;
+    languageRef.current = language;
+  }, [role, language]);
+
+  const { notify } = useToast();
+
+  // Load basins + community reports on mount
   useEffect(() => {
     loadBasins();
+    loadReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadBasins() {
@@ -36,9 +54,21 @@ export default function Dashboard() {
       setError(null);
     } catch (err) {
       console.error('Failed to load basins:', err);
-      setError('Failed to connect to Tayari API. Is the backend running on port 8000?');
+      const msg = 'Could not reach the Tayari API. Is the backend running on port 8000?';
+      setError(msg);
+      notify({ type: 'error', title: 'Connection failed', message: msg });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadReports() {
+    try {
+      const data = await fetchReports();
+      setReports(data);
+    } catch (err) {
+      // Non-fatal — the map still works without community reports.
+      console.error('Failed to load reports:', err);
     }
   }
 
@@ -58,8 +88,8 @@ export default function Dashboard() {
       map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
       mapInstance.current = map;
     } catch (e) {
-      console.error("Failed to initialize map:", e);
-      setError("Failed to initialize map due to a WebGL error. Please check your browser settings.");
+      console.error('Failed to initialize map:', e);
+      setError('The map could not start (WebGL error). Please check your browser settings.');
     }
 
     return () => {
@@ -70,64 +100,48 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Add basin markers when basins are loaded
+  // Basin markers
   useEffect(() => {
     if (!mapInstance.current || basins.length === 0) return;
 
-    // Clear existing markers
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
     basins.forEach((basin) => {
       const riskColor = RISK_COLORS[basin.current_risk] || RISK_COLORS.LOW;
-      const prob = basin.flood_probability != null
-        ? `${(basin.flood_probability * 100).toFixed(0)}%`
-        : '—';
+      const prob =
+        basin.flood_probability != null
+          ? `${(basin.flood_probability * 100).toFixed(0)}%`
+          : '—';
 
-      // Create pulsing marker element
       const el = document.createElement('div');
       el.style.cssText = `
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
         border-radius: 50%;
         background: ${riskColor};
-        border: 3px solid white;
-        box-shadow: 0 0 16px ${riskColor}80, 0 2px 8px rgba(0,0,0,0.3);
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 3px rgba(35,33,28,0.35);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Roboto Mono', monospace;
+        font-family: var(--font-mono);
         font-size: 11px;
-        font-weight: 700;
-        color: white;
-        transition: transform 0.2s;
-        position: relative;
+        font-weight: 600;
+        color: #ffffff;
+        transition: transform 140ms ease;
       `;
       el.textContent = prob;
       el.title = basin.name;
 
-      // Pulse ring
-      const ring = document.createElement('div');
-      ring.style.cssText = `
-        position: absolute;
-        inset: -6px;
-        border-radius: 50%;
-        border: 2px solid ${riskColor};
-        opacity: 0.4;
-        animation: ripple 2s infinite;
-      `;
-      el.appendChild(ring);
-
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.15)';
+        el.style.transform = 'scale(1.1)';
       });
       el.addEventListener('mouseleave', () => {
         el.style.transform = 'scale(1)';
       });
-      el.addEventListener('click', () => {
-        selectBasin(basin);
-      });
+      el.addEventListener('click', () => selectBasin(basin));
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([basin.longitude, basin.latitude])
@@ -135,79 +149,137 @@ export default function Dashboard() {
 
       markersRef.current.push(marker);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basins]);
 
-  const selectBasin = useCallback(
-    async (basin) => {
-      setSelectedBasin(basin);
-      setForecastLoading(true);
+  // Community report pins — small, so they don't compete with basin markers
+  useEffect(() => {
+    if (!mapInstance.current) return;
 
-      // Fly to basin
+    reportMarkersRef.current.forEach((m) => m.remove());
+    reportMarkersRef.current = [];
+
+    reports.forEach((report) => {
+      const status =
+        REPORT_STATUSES.find((s) => s.value === report.status) || REPORT_STATUSES[0];
+
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: ${status.color};
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 2px rgba(35,33,28,0.3);
+        cursor: pointer;
+      `;
+      el.title = `${status.label}${report.reporter_name ? ` — ${report.reporter_name}` : ''}`;
+
+      const popupHtml = `
+        <strong>${status.label}</strong>${
+        report.description
+          ? `<br/><span style="color:#6b6558">${escapeHtml(report.description)}</span>`
+          : ''
+      }<br/><span style="color:#938c7e;font-size:11px">${
+        report.reporter_name ? `by ${escapeHtml(report.reporter_name)} · ` : ''
+      }${new Date(report.submitted_at).toLocaleString()}</span>`;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([report.longitude, report.latitude])
+        .setPopup(new maplibregl.Popup({ offset: 12, closeButton: false }).setHTML(popupHtml))
+        .addTo(mapInstance.current);
+
+      reportMarkersRef.current.push(marker);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reports]);
+
+  // Fetch a basin's forecast without moving the map. Guarded against races,
+  // and always reads the current role/language from refs.
+  const loadForecast = useCallback(
+    async (basin) => {
+      const reqId = ++forecastReqId.current;
+      setForecastLoading(true);
+      try {
+        const data = await fetchForecast(basin.id, roleRef.current, languageRef.current);
+        // Ignore if a newer request has since started.
+        if (reqId === forecastReqId.current) {
+          setForecast(data);
+        }
+      } catch (err) {
+        console.error('Failed to load forecast:', err);
+        if (reqId === forecastReqId.current) {
+          notify({
+            type: 'error',
+            title: 'Forecast unavailable',
+            message: `Could not load the forecast for ${basin.name}.`,
+          });
+        }
+      } finally {
+        if (reqId === forecastReqId.current) {
+          setForecastLoading(false);
+        }
+      }
+    },
+    [notify]
+  );
+
+  // Select a basin: fly the map to it, then load its forecast.
+  const selectBasin = useCallback(
+    (basin) => {
+      setSelectedBasin(basin);
       if (mapInstance.current) {
         mapInstance.current.flyTo({
           center: [basin.longitude, basin.latitude],
           zoom: 9,
-          duration: 1500,
+          duration: 1400,
           essential: true,
         });
       }
-
-      try {
-        const data = await fetchForecast(basin.id, role, language);
-        setForecast(data);
-      } catch (err) {
-        console.error('Failed to load forecast:', err);
-      } finally {
-        setForecastLoading(false);
-      }
+      loadForecast(basin);
     },
-    [role, language]
+    [loadForecast]
   );
 
-  // Reload advisory when role or language changes
+  // Role / language change: refresh only the advisory — no map movement.
   useEffect(() => {
     if (selectedBasin) {
-      selectBasin(selectedBasin);
+      loadForecast(selectedBasin);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, language]);
 
   return (
     <div className="main-content">
-      {/* Map */}
       <div className="map-container">
         <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 
-        {/* Basin cards overlay */}
         <div className="basin-list animate-fade-in">
           {loading && (
-            <div className="basin-card">
+            <div className="basin-card" style={{ cursor: 'default' }}>
               <div className="spinner" />
               <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
-                Loading basins...
+                Loading basins…
               </span>
             </div>
           )}
-          {error && (
-            <div className="basin-card" style={{ borderColor: 'var(--risk-high)' }}>
-              <span style={{ color: 'var(--risk-high)', fontSize: '13px' }}>
-                ⚠️ {error}
-              </span>
+          {error && !loading && (
+            <div className="notice notice--error" role="alert">
+              {error}
             </div>
           )}
           {basins.map((basin) => (
             <div
               key={basin.id}
-              className={`basin-card ${
-                selectedBasin?.id === basin.id ? 'active' : ''
-              }`}
+              className={`basin-card ${selectedBasin?.id === basin.id ? 'active' : ''}`}
               onClick={() => selectBasin(basin)}
             >
               <div
                 className="basin-risk-indicator"
                 style={{
-                  background: `${RISK_COLORS[basin.current_risk]}20`,
+                  background: `${RISK_COLORS[basin.current_risk]}1F`,
                   color: RISK_COLORS[basin.current_risk],
-                  border: `2px solid ${RISK_COLORS[basin.current_risk]}`,
+                  border: `1.5px solid ${RISK_COLORS[basin.current_risk]}`,
                 }}
               >
                 {basin.flood_probability != null
@@ -218,41 +290,35 @@ export default function Dashboard() {
                 <div className="basin-name">{basin.name}</div>
                 <div className="basin-meta">
                   <span>{basin.country}</span>
-                  <span>•</span>
+                  <span>·</span>
                   <span className="basin-discharge">
                     {basin.current_discharge != null
                       ? `${basin.current_discharge.toFixed(0)} m³/s`
                       : '—'}
                   </span>
                 </div>
-                <span
-                  className={`risk-badge risk-badge--${basin.current_risk?.toLowerCase()}`}
-                  style={{ marginTop: '4px' }}
-                >
-                  <span
-                    className={`risk-dot risk-dot--${basin.current_risk?.toLowerCase()}`}
-                  />
-                  {basin.current_risk}
-                </span>
               </div>
+              <span
+                className={`risk-badge risk-badge--${basin.current_risk?.toLowerCase()}`}
+              >
+                {basin.current_risk}
+              </span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Side Panel */}
       {selectedBasin && (
-        <div className="side-panel animate-slide-in">
-          {forecastLoading ? (
+        <div className="side-panel">
+          {forecastLoading && !forecast ? (
             <div className="loading-container">
               <div className="spinner" />
-              <span>Loading forecast...</span>
+              <span>Loading forecast…</span>
             </div>
           ) : forecast ? (
             <>
-              {/* Basin header */}
               <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 700 }}>
+                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '20px', fontWeight: 600 }}>
                   {forecast.basin.name}
                 </h2>
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -260,10 +326,9 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Risk Gauge */}
               <div className="card">
                 <div className="card-header">
-                  <div className="card-title">🎯 Flood Risk</div>
+                  <div className="card-title">Flood risk</div>
                   <span
                     className={`risk-badge risk-badge--${forecast.risk.risk_level.toLowerCase()}`}
                   >
@@ -277,21 +342,22 @@ export default function Dashboard() {
                 <div
                   style={{
                     textAlign: 'center',
-                    marginTop: '8px',
+                    marginTop: '10px',
                     fontSize: '13px',
                     color: 'var(--text-muted)',
                   }}
                 >
                   {forecast.risk.threshold_exceedance_days != null
-                    ? `Threshold may be exceeded in ${forecast.risk.threshold_exceedance_days} days`
+                    ? `Flood threshold may be crossed in ${forecast.risk.threshold_exceedance_days} day${
+                        forecast.risk.threshold_exceedance_days === 1 ? '' : 's'
+                      }`
                     : 'No threshold exceedance expected in 7 days'}
                 </div>
               </div>
 
-              {/* Discharge Chart */}
               <div className="card">
                 <div className="card-header">
-                  <div className="card-title">📈 River Discharge</div>
+                  <div className="card-title">River discharge</div>
                   <span
                     style={{
                       fontSize: '12px',
@@ -305,24 +371,29 @@ export default function Dashboard() {
                 <ForecastChart discharge={forecast.discharge} />
               </div>
 
-              {/* Impact Panel */}
               <div className="card">
                 <div className="card-header">
-                  <div className="card-title">👥 Impact Assessment</div>
+                  <div className="card-title">Impact assessment</div>
                 </div>
                 <ImpactPanel impact={forecast.impact} />
               </div>
 
-              {/* Advisory with role & language selectors */}
               <div className="card">
                 <div className="card-header">
-                  <div className="card-title">📢 Advisory</div>
+                  <div className="card-title">Advisory</div>
+                  {forecastLoading && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Updating…
+                    </span>
+                  )}
                 </div>
 
-                {/* Role selector */}
                 <div className="form-group" style={{ marginBottom: '10px' }}>
-                  <label className="form-label">Role</label>
+                  <label className="form-label" htmlFor="role-select">
+                    Audience
+                  </label>
                   <select
+                    id="role-select"
                     className="form-select"
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
@@ -335,7 +406,6 @@ export default function Dashboard() {
                   </select>
                 </div>
 
-                {/* Language selector */}
                 <div style={{ marginBottom: '12px' }}>
                   <label
                     className="form-label"
@@ -350,15 +420,13 @@ export default function Dashboard() {
                         className={`lang-btn ${language === l.value ? 'active' : ''}`}
                         onClick={() => setLanguage(l.value)}
                       >
-                        {l.flag} {l.label}
+                        {l.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {forecast.advisory && (
-                  <AdvisoryCard advisory={forecast.advisory} />
-                )}
+                {forecast.advisory && <AdvisoryCard advisory={forecast.advisory} />}
               </div>
             </>
           ) : null}
@@ -366,4 +434,12 @@ export default function Dashboard() {
       )}
     </div>
   );
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

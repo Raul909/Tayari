@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     log_level: str = "info"
 
     # API Keys
-    anthropic_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama-3.3-70b-versatile"
     at_username: str = "sandbox"
     at_api_key: Optional[str] = None
 

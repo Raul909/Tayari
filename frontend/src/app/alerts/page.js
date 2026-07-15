@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { sendAlert, fetchAlertHistory, fetchAdvisory } from '@/lib/api';
-import { BASINS, ROLES, LANGUAGES, RISK_COLORS } from '@/lib/constants';
+import { BASINS, ROLES, LANGUAGES } from '@/lib/constants';
+import { useToast } from '@/components/Toast';
 
 export default function AlertsPage() {
   const [basinId, setBasinId] = useState('shabelle');
@@ -11,28 +12,33 @@ export default function AlertsPage() {
   const [phoneNumber, setPhoneNumber] = useState('+2521234567');
   const [smsPreview, setSmsPreview] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
 
-  // Load preview when settings change
+  const { notify } = useToast();
+
+  // Refresh the SMS preview whenever the targeting changes
   useEffect(() => {
     loadPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basinId, role, language]);
 
-  // Load alert history on mount
   useEffect(() => {
     loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadPreview() {
     setPreviewLoading(true);
+    setPreviewError(false);
     try {
       const data = await fetchAdvisory(basinId, role, language);
       setSmsPreview(data.sms_text || '');
     } catch (err) {
       console.error('Failed to load preview:', err);
-      setSmsPreview('Failed to generate preview. Is the backend running?');
+      setPreviewError(true);
+      setSmsPreview('Could not generate a preview. Is the backend running on port 8000?');
     } finally {
       setPreviewLoading(false);
     }
@@ -47,19 +53,48 @@ export default function AlertsPage() {
     }
   }
 
+  function parsePhones(raw) {
+    return raw
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }
+
   async function handleSend() {
+    const phones = parsePhones(phoneNumber);
+    if (phones.length === 0) {
+      notify({
+        type: 'error',
+        title: 'No recipients',
+        message: 'Enter at least one phone number in international format (e.g. +2521234567).',
+      });
+      return;
+    }
+    const invalid = phones.filter((p) => !/^\+?\d{7,15}$/.test(p));
+    if (invalid.length > 0) {
+      notify({
+        type: 'error',
+        title: 'Check the phone numbers',
+        message: `These don't look valid: ${invalid.join(', ')}`,
+      });
+      return;
+    }
+
     setSending(true);
-    setResult(null);
     try {
-      const phones = phoneNumber
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean);
       const res = await sendAlert(basinId, role, language, phones);
-      setResult(res);
-      loadHistory(); // Refresh history
+      if (res.success) {
+        notify({
+          type: 'success',
+          title: 'Alert sent',
+          message: res.message || `Sent to ${phones.length} recipient(s).`,
+        });
+      } else {
+        notify({ type: 'error', title: 'Send failed', message: res.message });
+      }
+      loadHistory();
     } catch (err) {
-      setResult({ success: false, message: err.message });
+      notify({ type: 'error', title: 'Send failed', message: err.message });
     } finally {
       setSending(false);
     }
@@ -68,24 +103,24 @@ export default function AlertsPage() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1 className="page-title">📡 Alert Management</h1>
+        <h1 className="page-title">Alerts</h1>
         <p className="page-description">
-          Generate and send multilingual flood advisories via SMS. Alerts are
-          sent through Africa's Talking (sandbox mode for demo).
+          Generate and send multilingual flood advisories via SMS. Messages go out through
+          Africa&apos;s Talking (sandbox mode for the demo).
         </p>
       </div>
 
-      <div style={{ display: 'grid', gap: '24px', gridTemplateColumns: '1fr 1fr' }}>
-        {/* Send Alert */}
+      <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: '1fr 1fr' }}>
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Send Alert</div>
+            <div className="card-title">Send an alert</div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="form-group">
-              <label className="form-label">Basin</label>
+              <label className="form-label" htmlFor="basin">Basin</label>
               <select
+                id="basin"
                 className="form-select"
                 value={basinId}
                 onChange={(e) => setBasinId(e.target.value)}
@@ -99,8 +134,9 @@ export default function AlertsPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Target Role</label>
+              <label className="form-label" htmlFor="target-role">Audience</label>
               <select
+                id="target-role"
                 className="form-select"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
@@ -122,80 +158,62 @@ export default function AlertsPage() {
                     className={`lang-btn ${language === l.value ? 'active' : ''}`}
                     onClick={() => setLanguage(l.value)}
                   >
-                    {l.flag} {l.label}
+                    {l.label}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Phone Number(s)</label>
+              <label className="form-label" htmlFor="phones">Phone number(s)</label>
               <input
+                id="phones"
                 className="form-input"
                 type="text"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="+2521234567"
               />
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                Separate multiple numbers with commas
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Separate multiple numbers with commas.
               </span>
             </div>
 
             <button
               className="btn btn-primary btn-lg"
               onClick={handleSend}
-              disabled={sending}
-              style={{ marginTop: '8px' }}
+              disabled={sending || previewLoading}
+              style={{ marginTop: '4px' }}
             >
               {sending ? (
                 <>
-                  <span className="spinner" style={{ width: 16, height: 16 }} />
-                  Sending...
+                  <span className="spinner" style={{ width: 15, height: 15 }} />
+                  Sending…
                 </>
               ) : (
-                '📤 Send SMS Alert'
+                'Send SMS alert'
               )}
             </button>
-
-            {result && (
-              <div
-                className="card"
-                style={{
-                  borderColor: result.success
-                    ? 'var(--risk-low)'
-                    : 'var(--risk-high)',
-                  padding: '14px',
-                }}
-              >
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>
-                  {result.success ? '✅ Alert Sent' : '❌ Failed'}
-                </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  {result.message}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* SMS Preview */}
         <div className="card">
           <div className="card-header">
-            <div className="card-title">📱 SMS Preview</div>
+            <div className="card-title">SMS preview</div>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
               {smsPreview.length} chars
             </span>
           </div>
           <div
             style={{
-              background: 'var(--bg-primary)',
-              borderRadius: '12px',
-              padding: '16px',
+              background: 'var(--surface-sunken)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '14px',
               fontFamily: 'var(--font-mono)',
               fontSize: '13px',
-              lineHeight: '1.7',
-              color: 'var(--text-secondary)',
+              lineHeight: '1.65',
+              color: previewError ? 'var(--risk-high)' : 'var(--text-secondary)',
               minHeight: '200px',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
@@ -212,18 +230,15 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* Alert History */}
-      <div className="card" style={{ marginTop: '24px' }}>
+      <div className="card" style={{ marginTop: '20px' }}>
         <div className="card-header">
-          <div className="card-title">📋 Alert History</div>
+          <div className="card-title">Alert history</div>
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            {history.length} alerts sent
+            {history.length} sent
           </span>
         </div>
         {history.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center', padding: '20px' }}>
-            No alerts sent yet. Send your first alert above.
-          </div>
+          <div className="empty-state">No alerts sent yet. Send your first one above.</div>
         ) : (
           <div className="table-container">
             <table>
@@ -231,29 +246,34 @@ export default function AlertsPage() {
                 <tr>
                   <th>Basin</th>
                   <th>Risk</th>
-                  <th>Role</th>
+                  <th>Audience</th>
                   <th>Language</th>
                   <th>Recipients</th>
-                  <th>Sent At</th>
+                  <th>Sent at</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map((alert) => (
-                  <tr key={alert.id}>
-                    <td>{alert.basin_id}</td>
-                    <td>
-                      <span className={`risk-badge risk-badge--${alert.risk_level?.toLowerCase()}`}>
-                        {alert.risk_level}
-                      </span>
-                    </td>
-                    <td>{alert.role}</td>
-                    <td>{alert.language}</td>
-                    <td>{alert.recipients_count}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-                      {new Date(alert.sent_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                {history
+                  .slice()
+                  .reverse()
+                  .map((alert) => (
+                    <tr key={alert.id}>
+                      <td>{alert.basin_id}</td>
+                      <td>
+                        <span
+                          className={`risk-badge risk-badge--${alert.risk_level?.toLowerCase()}`}
+                        >
+                          {alert.risk_level}
+                        </span>
+                      </td>
+                      <td>{alert.role}</td>
+                      <td>{alert.language}</td>
+                      <td>{alert.recipients_count}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                        {new Date(alert.sent_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
