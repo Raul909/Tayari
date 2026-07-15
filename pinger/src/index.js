@@ -21,6 +21,22 @@ export default {
 
   // Optional: allow manual pings via HTTP for debugging
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // Proxy for Open-Meteo Flood API
+    if (url.pathname.startsWith("/flood")) {
+      const target = new URL("https://flood-api.open-meteo.com/v1/flood" + url.search);
+      const resp = await fetch(target, { headers: { "User-Agent": "Tayari CF Worker" } });
+      return new Response(resp.body, { status: resp.status, headers: { "Content-Type": "application/json" } });
+    }
+
+    // Proxy for Open-Meteo Weather API
+    if (url.pathname.startsWith("/weather")) {
+      const target = new URL("https://api.open-meteo.com/v1/forecast" + url.search);
+      const resp = await fetch(target, { headers: { "User-Agent": "Tayari CF Worker" } });
+      return new Response(resp.body, { status: resp.status, headers: { "Content-Type": "application/json" } });
+    }
+
     const renderUrl = "https://tayari-api.onrender.com/health";
     try {
       const response = await fetch(renderUrl, {
