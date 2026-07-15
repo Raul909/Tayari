@@ -136,20 +136,24 @@ async def get_forecast(
     basin = _get_basin(basin_id)
 
     # Fetch data from both APIs concurrently
-    discharge_data, rainfall_data = await asyncio.gather(
-        fetch_river_discharge(
-            basin.gauge_point.latitude,
-            basin.gauge_point.longitude,
-            forecast_days=7,
-            past_days=30,
-        ),
-        fetch_upstream_rainfall(
-            basin.upstream_point.latitude,
-            basin.upstream_point.longitude,
-            forecast_days=7,
-            past_days=14,
-        ),
-    )
+    try:
+        discharge_data, rainfall_data = await asyncio.gather(
+            fetch_river_discharge(
+                basin.gauge_point.latitude,
+                basin.gauge_point.longitude,
+                forecast_days=7,
+                past_days=30,
+            ),
+            fetch_upstream_rainfall(
+                basin.upstream_point.latitude,
+                basin.upstream_point.longitude,
+                forecast_days=7,
+                past_days=14,
+            ),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Data fetch error: {str(e)} ({type(e).__name__})")
+
 
     # Compute flood risk
     risk = compute_flood_risk(basin, discharge_data, rainfall_data)
