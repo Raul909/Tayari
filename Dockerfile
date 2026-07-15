@@ -1,5 +1,10 @@
 FROM python:3.12-slim
 
+# Prevent Python from writing .pyc files to disc
+ENV PYTHONDONTWRITEBYTECODE=1
+# Prevent Python from buffering stdout and stderr
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Copy requirements
@@ -10,6 +15,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 
 # Run the Uvicorn server
-# Note: Render provides the PORT environment variable dynamically, but defaults to 10000.
-# We explicitly bind Uvicorn to 0.0.0.0 so Render can route traffic to it.
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "10000"]
+# Back4app dynamically assigns the PORT environment variable.
+CMD sh -c "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"
