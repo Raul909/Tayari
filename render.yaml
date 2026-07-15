@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tayari-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ENVIRONMENT
+        value: production
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AT_API_KEY
+        sync: false
