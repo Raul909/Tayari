@@ -252,7 +252,7 @@ export default function Dashboard() {
   return (
     <div className="main-content">
       <div className="map-container">
-        <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={mapRef} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%' }} />
 
         <div className="basin-list animate-fade-in">
           {loading && (
