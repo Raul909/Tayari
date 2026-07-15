@@ -18,5 +18,5 @@ COPY backend/ ./backend/
 EXPOSE 8080
 
 # Run the Uvicorn server
-# Back4app dynamically assigns the PORT environment variable.
-CMD sh -c "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"
+# We must cd into the backend directory so 'from app.config import settings' resolves correctly!
+CMD sh -c "cd backend && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"
