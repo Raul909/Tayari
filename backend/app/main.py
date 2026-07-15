@@ -5,8 +5,10 @@ FastAPI application entry point.
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.routers import forecasts, alerts
@@ -85,6 +87,11 @@ app.add_middleware(
 # Register routers
 app.include_router(forecasts.router, prefix="/api", tags=["forecasts"])
 app.include_router(alerts.router, prefix="/api", tags=["alerts"])
+
+# Serve uploaded report photos
+_uploads_dir = Path(__file__).parent.parent / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
 @app.get("/")

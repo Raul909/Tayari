@@ -2,13 +2,17 @@
 Alert and community report API routers.
 """
 
+import asyncio
 import logging
+import os
+import uuid
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from typing import Optional
 
 from app.models.schemas import (
     AlertRequest, AlertResponse, AlertRecord,
-    ReportSubmission, CommunityReport,
+    ReportSubmission, CommunityReport, ReportStatus,
     UserRole, Language,
 )
 from app.services.alerts import send_sms_alert
@@ -29,6 +33,10 @@ _alert_history: list[AlertRecord] = []
 _community_reports: list[CommunityReport] = []
 _report_id_counter = 0
 _alert_id_counter = 0
+
+# Upload directory for report photos
+UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads" / "reports"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Load basin config helper
 _basins_path = Path(__file__).parent.parent / "data" / "basins.json"
@@ -57,18 +65,20 @@ async def send_alert(request: AlertRequest):
 
     basin = _get_basin_config(request.basin_id)
 
-    # Generate the advisory
-    discharge_data = await fetch_river_discharge(
-        basin.gauge_point.latitude,
-        basin.gauge_point.longitude,
-        forecast_days=3,
-        past_days=7,
-    )
-    rainfall_data = await fetch_upstream_rainfall(
-        basin.upstream_point.latitude,
-        basin.upstream_point.longitude,
-        forecast_days=3,
-        past_days=7,
+    # Generate the advisory — fetch both data feeds concurrently
+    discharge_data, rainfall_data = await asyncio.gather(
+        fetch_river_discharge(
+            basin.gauge_point.latitude,
+            basin.gauge_point.longitude,
+            forecast_days=3,
+            past_days=7,
+        ),
+        fetch_upstream_rainfall(
+            basin.upstream_point.latitude,
+            basin.upstream_point.longitude,
+            forecast_days=3,
+            past_days=7,
+        ),
     )
 
     risk = compute_flood_risk(basin, discharge_data, rainfall_data)
@@ -147,6 +157,60 @@ async def submit_report(report: ReportSubmission):
 
     _community_reports.append(community_report)
     logger.info(f"Community report #{_report_id_counter} submitted for {report.basin_id}")
+
+    return community_report
+
+
+@router.post("/reports/upload", response_model=CommunityReport)
+async def submit_report_with_photo(
+    basin_id: str = Form(...),
+    status: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    description: Optional[str] = Form(None),
+    reporter_name: Optional[str] = Form(None),
+    photo: Optional[UploadFile] = File(None),
+):
+    """
+    Submit a community report with an optional photo upload.
+
+    Accepts multipart/form-data so the mobile app can send the compressed
+    JPEG binary alongside the report fields in a single request.
+    """
+    global _report_id_counter
+    _report_id_counter += 1
+
+    photo_url = None
+    if photo and photo.filename:
+        # Generate a unique filename to avoid collisions
+        ext = os.path.splitext(photo.filename)[1] or ".jpg"
+        filename = f"{_report_id_counter}_{uuid.uuid4().hex[:8]}{ext}"
+        filepath = UPLOAD_DIR / filename
+
+        contents = await photo.read()
+        with open(filepath, "wb") as f:
+            f.write(contents)
+
+        photo_url = f"/uploads/reports/{filename}"
+        logger.info(f"Saved report photo: {filepath} ({len(contents)} bytes)")
+
+    # Map the raw status string to the enum value
+    status_enum = ReportStatus(status)
+
+    community_report = CommunityReport(
+        id=_report_id_counter,
+        basin_id=basin_id,
+        status=status_enum,
+        latitude=latitude,
+        longitude=longitude,
+        description=description,
+        reporter_name=reporter_name,
+        photo_url=photo_url,
+        submitted_at=datetime.utcnow(),
+    )
+
+    _community_reports.append(community_report)
+    logger.info(f"Community report #{_report_id_counter} (with photo) submitted for {basin_id}")
 
     return community_report
 
