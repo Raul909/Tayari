@@ -88,6 +88,12 @@ export default function Dashboard() {
         center: [MAP_CENTER.lng, MAP_CENTER.lat],
         zoom: MAP_CENTER.zoom,
         attributionControl: true,
+        cooperativeGestures: true,
+        pitchWithRotate: false,
+        dragRotate: false,
+        maxPitch: 0,
+        failIfMajorPerformanceCaveat: false,
+        trackResize: true,
       });
 
       map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
