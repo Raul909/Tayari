@@ -30,7 +30,13 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
     // is already tailored to them without any extra taps.
     final prefs = ref.read(userPrefsProvider);
     selectedRole = prefs.role;
-    selectedLanguage = prefs.language;
+    // Snap to a language this basin actually speaks — the lower Omo is
+    // Daasanach, not the owner's saved Oromo/other default.
+    final basinLangs = languageOptionsForBasin(widget.basin.basinId)
+        .map((o) => o.value)
+        .toList();
+    selectedLanguage =
+        basinLangs.contains(prefs.language) ? prefs.language : basinLangs.first;
     // Kick off a forecast fetch as soon as the screen opens. Without this the
     // forecast/advisory would never be requested and the screen would hang on
     // "loading" forever.
@@ -137,6 +143,29 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
                     style: const TextStyle(fontSize: 15, height: 1.55),
                   ),
                 ),
+                if (advisory != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.auto_awesome,
+                          size: 13, color: AppColors.textMuted),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'AI-generated advisory — AI can make mistakes. Verify '
+                          'critical details with official sources before acting.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: AppColors.textMuted,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 40),
               ],
             ),
@@ -206,7 +235,7 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
       items: [
-        for (final l in kLanguageOptions)
+        for (final l in languageOptionsForBasin(widget.basin.basinId))
           DropdownMenuItem(value: l.value, child: Text(l.label)),
       ],
       onChanged: (val) {
@@ -344,17 +373,38 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
   }
 
   Widget _buildImpactRow(int people, int schools, int health) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _impactBox(Icons.people_outline, 'People', _compact(people))),
-        const SizedBox(width: 10),
-        Expanded(child: _impactBox(Icons.school_outlined, 'Schools', schools.toString())),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _impactBox(
-            Icons.local_hospital_outlined,
-            'Health',
-            health.toString(),
+        Row(
+          children: [
+            Expanded(
+              child: _impactBox(
+                Icons.people_outline,
+                'People (est.)',
+                people > 0 ? '~${_compact(people)}' : '0',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: _impactBox(Icons.school_outlined, 'Schools', schools.toString())),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _impactBox(
+                Icons.local_hospital_outlined,
+                'Health',
+                health.toString(),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Modeled estimates from population & infrastructure data — '
+          'not a live headcount.',
+          style: TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            fontStyle: FontStyle.italic,
           ),
         ),
       ],

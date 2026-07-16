@@ -36,7 +36,23 @@ LANGUAGE_NAMES = {
     Language.SOMALI: "Somali",
     Language.SWAHILI: "Swahili",
     Language.AMHARIC: "Amharic",
-    Language.OROMO: "Oromo",
+    Language.OROMO: "Afaan Oromoo (Oromo)",
+    Language.ARABIC: "Arabic",
+    Language.AFAR: "Afar (Qafar af)",
+    Language.DINKA: "Dinka (Thuɔŋjäŋ)",
+    Language.DAASANACH: "Daasanach",
+    Language.LUHYA: "Luhya (Oluluhya)",
+    Language.TURKANA: "Turkana (Ŋaturkana)",
+}
+
+# Correct, safety-critical flood vocabulary for languages the LLM handles poorly.
+# General LLMs mistranslate the word "flood" and the word "people" in several
+# East African languages — e.g. rendering "people" as a word meaning
+# "propaganda" in Oromo — so we hand the model the right words up front.
+FLOOD_GLOSSARY = {
+    Language.OROMO: "flood = 'lolaa' (NOT 'dhihaa', which means west); people = 'namoota' (NEVER 'olola', which means propaganda); boats = 'bidiruu'; schools = 'manneen barnootaa'; health facilities = 'buufataalee fayyaa'; markets = 'gabaa'",
+    Language.AMHARIC: "flood = 'ጎርፍ'; people = 'ሰዎች'; boats = 'ጀልባዎች'; schools = 'ትምህርት ቤቶች'; health facilities = 'የጤና ተቋማት'; markets = 'ገበያዎች'",
+    Language.ARABIC: "flood = 'فيضان'; people = 'أشخاص'; boats = 'قوارب'; schools = 'مدارس'; health facilities = 'مرافق صحية'; markets = 'أسواق'",
 }
 
 ROLE_DESCRIPTIONS = {
@@ -144,6 +160,25 @@ async def _generate_with_groq(
         if risk.probabilities_7day else None
     )
 
+    # Give the model the correct safety vocabulary for tricky languages, and
+    # spell out translation-fidelity rules to prevent the classic failures
+    # (mistranslated "flood"/"people", untranslated English, garbled numbers).
+    glossary = FLOOD_GLOSSARY.get(language)
+    if language == Language.ENGLISH:
+        language_note = ""
+    else:
+        language_note = (
+            f"\nLANGUAGE — write EVERYTHING (title, body, actions) in natural, fluent "
+            f"{LANGUAGE_NAMES[language]} that a resident would actually use:\n"
+            f"- Translate every word. Do NOT leave any English words in the output "
+            f"(the TITLE:/BODY:/ACTIONS: markers stay in English, nothing else).\n"
+            f"- Keep all numbers as digits exactly as given (e.g. 50,000; 126%). "
+            f"Never spell them out or translate the digits.\n"
+            f"- Use the everyday local word for 'flood' and 'people' — not a "
+            f"transliteration of the English word.\n"
+            + (f"- Required vocabulary: {glossary}\n" if glossary else "")
+        )
+
     prompt = f"""You are the advisory writer for Tayari, a flood early-warning system for East Africa. You combine the judgement of a hydrologist with the instincts of an experienced humanitarian field officer. You write impact-based warnings in the WMO style: not what the forecast IS, but what the water will DO and what this specific reader must DO about it.
 
 SITUATION — {basin_name} ({river_name}, {country}), {datetime.utcnow():%d %b %Y}:
@@ -158,7 +193,7 @@ EXPOSURE (within the {impact.flood_zone_km} km flood zone):
 - ~{impact.estimated_population_at_risk:,} people, {impact.schools_at_risk} schools, {impact.clinics_at_risk + impact.hospitals_at_risk} health facilities, {impact.markets_at_risk} markets
 
 READER: {ROLE_DESCRIPTIONS[role]}. Write in {LANGUAGE_NAMES[language]}.
-
+{language_note}
 Before writing, reason silently: When is the real danger window? Is the river rising or falling, and how fast? What does this specific risk mean for this reader's family, crops, herd, or duties? What can they realistically do in the next 24–48 hours with what they have? Then output ONLY the final advisory.
 
 RULES:
@@ -190,7 +225,7 @@ CRITICAL: Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly a
 
     # Parse the response
     text = response.choices[0].message.content
-    return _parse_advisory_response(text, risk, role, language)
+    return _parse_advisory_response(text, risk, role, language, ai_generated=True)
 
 
 def _parse_advisory_response(
@@ -198,6 +233,7 @@ def _parse_advisory_response(
     risk: FloodRiskScore,
     role: UserRole,
     language: Language,
+    ai_generated: bool = False,
 ) -> Advisory:
     """Parse the LLM response into an Advisory object."""
     title = ""
@@ -241,6 +277,7 @@ def _parse_advisory_response(
         actions=actions,
         generated_at=datetime.utcnow(),
         valid_until=datetime.utcnow() + timedelta(hours=CACHE_TTL_HOURS),
+        ai_generated=ai_generated,
     )
 
 

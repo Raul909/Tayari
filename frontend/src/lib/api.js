@@ -141,3 +141,16 @@ export function resolveAssetUrl(path) {
   if (!path) return null;
   return path.startsWith('http') ? path : `${API_BASE}${path}`;
 }
+
+/**
+ * Send a chat message about an advisory.
+ */
+export async function sendChatMessage(basinId, message, role = 'general', language = 'en', sessionMessages = []) {
+  const res = await fetch(`${API_BASE}/api/chat/${basinId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, role, language, session_messages: sessionMessages }),
+  });
+  if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
+  return res.json();
+}

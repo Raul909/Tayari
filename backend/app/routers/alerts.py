@@ -1,5 +1,9 @@
 """
 Alert and community report API routers.
+
+Community reports, their advice threads, and sent-alert history are persisted
+to the shared database (Neon Postgres in production, SQLite locally) so they
+survive restarts and are visible to both the web dashboard and the mobile app.
 """
 
 import asyncio
@@ -7,71 +11,42 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from pathlib import Path
 from typing import Optional
 
-from app.models.schemas import (
-    AlertRequest, AlertResponse, AlertRecord,
-    ReportSubmission, CommunityReport, ReportStatus,
-    AdviceSubmission, ReportAdvice,
-    UserRole, Language,
+from fastapi import (
+    APIRouter, Depends, File, Form, HTTPException, Query, UploadFile,
 )
-from app.services.alerts import send_sms_alert
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_session
+from app.models.db_models import AdviceORM, AlertORM, ReportORM
+from app.models.schemas import (
+    AdviceSubmission, AlertRecord, AlertRequest, AlertResponse,
+    CommunityReport, ReportAdvice, ReportEdit, ReportStatus, ReportSubmission,
+)
 from app.services.advisory import generate_advisory
+from app.services.alerts import send_sms_alert
 from app.services.flood_data import fetch_river_discharge
-from app.services.weather_data import fetch_upstream_rainfall
 from app.services.flood_model import compute_flood_risk
 from app.services.impact import compute_impact
+from app.services.weather_data import fetch_upstream_rainfall
 
 import json
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Upload directory for report photos
+# Upload directory for report photos.
+# NOTE: on ephemeral hosts (e.g. Render/Koyeb free tier) this disk is wiped on
+# redeploy. The report *record* below is durable in the database; for durable
+# photo binaries, point photo storage at object storage (Cloudflare R2 / S3).
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads" / "reports"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Reports are persisted to a JSON file so they survive backend restarts.
-_REPORTS_STORE = Path(__file__).parent.parent / "data" / "community_reports.json"
-
-
-def _load_reports() -> tuple[list[CommunityReport], int, int]:
-    if not _REPORTS_STORE.exists():
-        return [], 0, 0
-    try:
-        raw = json.loads(_REPORTS_STORE.read_text())
-        reports = [CommunityReport(**r) for r in raw.get("reports", [])]
-        return (
-            reports,
-            raw.get("report_id_counter", len(reports)),
-            raw.get("advice_id_counter", 0),
-        )
-    except Exception:
-        logger.exception("Could not load persisted community reports — starting empty")
-        return [], 0, 0
-
-
-def _save_reports() -> None:
-    try:
-        payload = {
-            "reports": [r.model_dump(mode="json") for r in _community_reports],
-            "report_id_counter": _report_id_counter,
-            "advice_id_counter": _advice_id_counter,
-        }
-        _REPORTS_STORE.write_text(json.dumps(payload, indent=2))
-    except Exception:
-        logger.exception("Could not persist community reports")
-
-
-# In-memory stores (alerts are ephemeral; reports are backed by the JSON store)
-_alert_history: list[AlertRecord] = []
-_community_reports, _report_id_counter, _advice_id_counter = _load_reports()
-_alert_id_counter = 0
-
-# Load basin config helper
 _basins_path = Path(__file__).parent.parent / "data" / "basins.json"
+
 
 def _get_basin_config(basin_id: str):
     from app.models.schemas import BasinConfig
@@ -83,18 +58,46 @@ def _get_basin_config(basin_id: str):
     raise HTTPException(status_code=404, detail=f"Basin '{basin_id}' not found")
 
 
+# ─── ORM → Pydantic mappers ──────────────────────────────────────────────────
+
+def _to_report_schema(row: ReportORM) -> CommunityReport:
+    """Convert a ReportORM row (with its advice) to the API schema."""
+    return CommunityReport(
+        id=row.id,
+        basin_id=row.basin_id,
+        status=ReportStatus(row.status),
+        latitude=row.latitude,
+        longitude=row.longitude,
+        description=row.description,
+        reporter_name=row.reporter_name,
+        photo_url=row.photo_url,
+        submitted_at=row.submitted_at,
+        advice=[
+            ReportAdvice(
+                id=a.id,
+                message=a.message,
+                author_name=a.author_name,
+                author_role=a.author_role,
+                created_at=a.created_at,
+            )
+            for a in row.advice
+        ],
+    )
+
+
 # ─── Alert Endpoints ─────────────────────────────────────────────────────────
 
 @router.post("/alerts/send", response_model=AlertResponse)
-async def send_alert(request: AlertRequest):
+async def send_alert(
+    request: AlertRequest,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Send an SMS alert for a basin.
 
     Generates an AI advisory in the specified role and language,
-    then sends it via Africa's Talking SMS.
+    then sends it via Africa's Talking SMS and records it to the database.
     """
-    global _alert_id_counter
-
     basin = _get_basin_config(request.basin_id)
 
     # Generate the advisory — fetch both data feeds concurrently
@@ -133,18 +136,16 @@ async def send_alert(request: AlertRequest):
     # Send via Africa's Talking
     result = await send_sms_alert(sms_text, request.phone_numbers)
 
-    # Record alert
-    _alert_id_counter += 1
-    _alert_history.append(AlertRecord(
-        id=_alert_id_counter,
+    # Record alert to the database
+    session.add(AlertORM(
         basin_id=request.basin_id,
-        risk_level=risk.risk_level,
-        role=request.role,
-        language=request.language,
+        risk_level=risk.risk_level.value,
+        role=request.role.value,
+        language=request.language.value,
         recipients_count=len(request.phone_numbers),
-        sent_at=datetime.utcnow(),
         advisory_text=sms_text,
     ))
+    await session.commit()
 
     return result
 
@@ -153,45 +154,60 @@ async def send_alert(request: AlertRequest):
 async def get_alert_history(
     basin_id: str = Query(None, description="Filter by basin ID"),
     limit: int = Query(50, description="Max number of records"),
+    session: AsyncSession = Depends(get_session),
 ):
-    """Get the history of sent alerts."""
-    records = _alert_history
+    """Get the history of sent alerts (most recent last)."""
+    stmt = select(AlertORM)
     if basin_id:
-        records = [r for r in records if r.basin_id == basin_id]
-    return records[-limit:]
+        stmt = stmt.where(AlertORM.basin_id == basin_id)
+    stmt = stmt.order_by(AlertORM.id.desc()).limit(limit)
+
+    rows = list(reversed((await session.scalars(stmt)).all()))
+    from app.models.schemas import RiskLevel, UserRole, Language
+    return [
+        AlertRecord(
+            id=r.id,
+            basin_id=r.basin_id,
+            risk_level=RiskLevel(r.risk_level),
+            role=UserRole(r.role),
+            language=Language(r.language),
+            recipients_count=r.recipients_count,
+            sent_at=r.sent_at,
+            advisory_text=r.advisory_text,
+        )
+        for r in rows
+    ]
 
 
 # ─── Community Report Endpoints ──────────────────────────────────────────────
 
 @router.post("/reports", response_model=CommunityReport)
-async def submit_report(report: ReportSubmission):
+async def submit_report(
+    report: ReportSubmission,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Submit a community report from the field.
 
     Community members can report ground conditions via the app or SMS reply.
     Reports appear as pins on the map and serve as ground truth
-    for model validation.
+    for model validation. Persisted to the shared database.
     """
-    global _report_id_counter
-    _report_id_counter += 1
-
-    community_report = CommunityReport(
-        id=_report_id_counter,
+    row = ReportORM(
         basin_id=report.basin_id,
-        status=report.status,
+        status=report.status.value,
         latitude=report.latitude,
         longitude=report.longitude,
         description=report.description,
         reporter_name=report.reporter_name,
         photo_url=report.photo_url,
-        submitted_at=datetime.utcnow(),
     )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    logger.info(f"Community report #{row.id} submitted for {report.basin_id}")
 
-    _community_reports.append(community_report)
-    _save_reports()
-    logger.info(f"Community report #{_report_id_counter} submitted for {report.basin_id}")
-
-    return community_report
+    return _to_report_schema(row)
 
 
 @router.post("/reports/upload", response_model=CommunityReport)
@@ -203,6 +219,7 @@ async def submit_report_with_photo(
     description: Optional[str] = Form(None),
     reporter_name: Optional[str] = Form(None),
     photo: Optional[UploadFile] = File(None),
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Submit a community report with an optional photo upload.
@@ -210,59 +227,141 @@ async def submit_report_with_photo(
     Accepts multipart/form-data so the mobile app can send the compressed
     JPEG binary alongside the report fields in a single request.
     """
-    global _report_id_counter
-    _report_id_counter += 1
+    # Validate status before we touch the disk or database.
+    status_enum = ReportStatus(status)
 
-    photo_url = None
+    row = ReportORM(
+        basin_id=basin_id,
+        status=status_enum.value,
+        latitude=latitude,
+        longitude=longitude,
+        description=description,
+        reporter_name=reporter_name,
+    )
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+
     if photo and photo.filename:
         # Generate a unique filename to avoid collisions
         ext = os.path.splitext(photo.filename)[1] or ".jpg"
-        filename = f"{_report_id_counter}_{uuid.uuid4().hex[:8]}{ext}"
+        filename = f"{row.id}_{uuid.uuid4().hex[:8]}{ext}"
         filepath = UPLOAD_DIR / filename
 
         contents = await photo.read()
         with open(filepath, "wb") as f:
             f.write(contents)
 
-        photo_url = f"/uploads/reports/{filename}"
+        row.photo_url = f"/uploads/reports/{filename}"
+        await session.commit()
+        await session.refresh(row)
         logger.info(f"Saved report photo: {filepath} ({len(contents)} bytes)")
 
-    # Map the raw status string to the enum value
-    status_enum = ReportStatus(status)
-
-    community_report = CommunityReport(
-        id=_report_id_counter,
-        basin_id=basin_id,
-        status=status_enum,
-        latitude=latitude,
-        longitude=longitude,
-        description=description,
-        reporter_name=reporter_name,
-        photo_url=photo_url,
-        submitted_at=datetime.utcnow(),
-    )
-
-    _community_reports.append(community_report)
-    _save_reports()
-    logger.info(f"Community report #{_report_id_counter} (with photo) submitted for {basin_id}")
-
-    return community_report
+    logger.info(f"Community report #{row.id} (with photo) submitted for {basin_id}")
+    return _to_report_schema(row)
 
 
 @router.get("/reports", response_model=list[CommunityReport])
 async def get_reports(
     basin_id: str = Query(None, description="Filter by basin ID"),
     limit: int = Query(50, description="Max number of records"),
+    session: AsyncSession = Depends(get_session),
 ):
-    """Get community reports, optionally filtered by basin."""
-    reports = _community_reports
+    """Get community reports (most recent last), optionally filtered by basin."""
+    stmt = select(ReportORM)
     if basin_id:
-        reports = [r for r in reports if r.basin_id == basin_id]
-    return reports[-limit:]
+        stmt = stmt.where(ReportORM.basin_id == basin_id)
+    stmt = stmt.order_by(ReportORM.id.desc()).limit(limit)
+
+    rows = list(reversed((await session.scalars(stmt)).all()))
+    return [_to_report_schema(r) for r in rows]
+
+
+@router.patch("/reports/{report_id}", response_model=CommunityReport)
+async def edit_report(
+    report_id: int,
+    edit: ReportEdit,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Edit a community report's status, description, or reporter name.
+
+    Open to anyone using the app or the mobile app — Tayari is a shared,
+    community-owned board, so a reporter can correct their own report and a
+    coordinator can update a stale status (e.g. from `water_rising` to
+    `all_clear`). Only the fields provided in the request are changed.
+    """
+    row = await session.get(ReportORM, report_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Report #{report_id} not found")
+
+    if edit.status is not None:
+        row.status = edit.status.value
+    if edit.description is not None:
+        row.description = edit.description
+    if edit.reporter_name is not None:
+        row.reporter_name = edit.reporter_name
+
+    await session.commit()
+    await session.refresh(row)
+    logger.info(f"Report #{report_id} edited")
+    return _to_report_schema(row)
+
+
+@router.delete("/reports/{report_id}", status_code=204)
+async def delete_report(
+    report_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Delete a community report and its advice thread.
+
+    Also removes the uploaded photo from disk if present. Cascade on the advice
+    relationship clears the thread automatically.
+    """
+    row = await session.get(ReportORM, report_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Report #{report_id} not found")
+
+    # Best-effort cleanup of the on-disk photo.
+    if row.photo_url:
+        photo_path = Path(__file__).parent.parent.parent / row.photo_url.lstrip("/")
+        try:
+            photo_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning(f"Could not delete photo for report #{report_id}")
+
+    await session.delete(row)
+    await session.commit()
+    logger.info(f"Report #{report_id} deleted")
+
+
+@router.delete("/reports/{report_id}/advice/{advice_id}", response_model=CommunityReport)
+async def delete_report_advice(
+    report_id: int,
+    advice_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a single piece of advice from a report's thread."""
+    advice_row = await session.get(AdviceORM, advice_id)
+    if advice_row is None or advice_row.report_id != report_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Advice #{advice_id} not found on report #{report_id}",
+        )
+    await session.delete(advice_row)
+    await session.commit()
+
+    row = await session.get(ReportORM, report_id)
+    return _to_report_schema(row)
 
 
 @router.post("/reports/{report_id}/advice", response_model=CommunityReport)
-async def add_report_advice(report_id: int, advice: AdviceSubmission):
+async def add_report_advice(
+    report_id: int,
+    advice: AdviceSubmission,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Attach advice or guidance to a community report.
 
@@ -270,20 +369,18 @@ async def add_report_advice(report_id: int, advice: AdviceSubmission):
     field report with concrete guidance — where to evacuate, which road is
     passable, who to contact. The advice thread is returned with the report.
     """
-    global _advice_id_counter
+    row = await session.get(ReportORM, report_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Report #{report_id} not found")
 
-    for report in _community_reports:
-        if report.id == report_id:
-            _advice_id_counter += 1
-            report.advice.append(ReportAdvice(
-                id=_advice_id_counter,
-                message=advice.message.strip(),
-                author_name=advice.author_name,
-                author_role=advice.author_role,
-                created_at=datetime.utcnow(),
-            ))
-            _save_reports()
-            logger.info(f"Advice #{_advice_id_counter} added to report #{report_id}")
-            return report
+    session.add(AdviceORM(
+        report_id=report_id,
+        message=advice.message.strip(),
+        author_name=advice.author_name,
+        author_role=advice.author_role,
+    ))
+    await session.commit()
+    await session.refresh(row)
+    logger.info(f"Advice added to report #{report_id}")
 
-    raise HTTPException(status_code=404, detail=f"Report #{report_id} not found")
+    return _to_report_schema(row)

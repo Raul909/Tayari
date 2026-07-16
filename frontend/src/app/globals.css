@@ -530,6 +530,16 @@ a { color: inherit; }
   flex-shrink: 0;
 }
 
+.advisory-ai-note {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 /* ─── Impact ───────────────────────────────────────────────────────────── */
 
 .impact-grid {
@@ -779,10 +789,102 @@ tr:hover td { background: var(--surface-sunken); }
     width: 100%;
     border-left: none;
     border-top: 1px solid var(--border-color);
+    max-height: 60vh;
   }
 
   .basin-list {
-    max-width: calc(100% - 28px);
+    position: relative;
+    top: auto;
+    left: auto;
+    max-width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 10px 14px;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .basin-card {
+    min-width: 240px;
+    flex-shrink: 0;
+  }
+
+  .map-container {
+    min-height: 45vh;
+  }
+
+  .page-container [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .navbar-nav {
+    gap: 0;
+  }
+
+  .nav-link {
+    padding: 7px 10px;
+    font-size: 13px;
+  }
+
+  .navbar-subtitle {
+    display: none;
+  }
+
+  .impact-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mobile-back-btn {
+    display: flex;
+  }
+
+  .lang-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar-title {
+    font-size: 18px;
+  }
+
+  .basin-card {
+    min-width: 200px;
+    padding: 10px 12px;
+  }
+
+  .basin-name {
+    font-size: 13px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .page-container {
+    padding: 20px 14px 36px;
+  }
+
+  .page-title {
+    font-size: 22px;
+  }
+
+  .impact-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .impact-value {
+    font-size: 18px;
+  }
+
+  .advisory-title {
+    font-size: 14px;
+  }
+
+  .advisory-body {
+    font-size: 13px;
   }
 }
 
@@ -818,4 +920,221 @@ tr:hover td { background: var(--surface-sunken); }
 .maplibregl-ctrl-attrib {
   background: rgba(255, 255, 255, 0.8) !important;
   font-size: 10px !important;
+}
+
+.mobile-back-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+/* ─── Advisory Chat ─────────────────────────────────────────────────── */
+
+.advisory-chat-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 100%;
+  transition: background var(--transition), color var(--transition);
+}
+
+.advisory-chat-toggle:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.advisory-chat {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+}
+
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding-right: 4px;
+}
+
+.chat-bubble {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 85%;
+  word-break: break-word;
+}
+
+.chat-bubble--user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  border: 1px solid rgba(183, 86, 47, 0.2);
+}
+
+.chat-bubble--ai {
+  align-self: flex-start;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-input-row input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.chat-input-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.chat-remaining {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* ─── Auth ─────────────────────────────────────────────────────────── */
+
+.auth-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.auth-modal {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 400px;
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
+}
+
+.auth-tab {
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.auth-tab.active {
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--accent);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-error {
+  color: var(--risk-high);
+  font-size: 12px;
+  background: rgba(192, 67, 43, 0.1);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── User Menu ────────────────────────────────────────────────────── */
+
+.user-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: 8px 0;
+  min-width: 150px;
+  z-index: 100;
+}
+
+.user-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.user-dropdown-item:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }

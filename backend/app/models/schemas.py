@@ -31,6 +31,19 @@ class Language(str, Enum):
     SWAHILI = "sw"
     AMHARIC = "am"
     OROMO = "om"
+    ARABIC = "ar"        # Sudanese / Juba Arabic (Blue Nile, White Nile)
+    AFAR = "aa"          # Afar lowlands (Awash / Dubti)
+    DINKA = "din"        # Jonglei / Bor (White Nile)
+    DAASANACH = "dsh"    # Lower Omo / Omorate
+    LUHYA = "luy"        # Budalangi / Lake Victoria basin (Nzoia)
+    TURKANA = "tuv"      # Lake Turkana shore
+
+
+# Advisories in these languages have human-reviewed templates in the repo. When
+# the LLM is used instead (any language, but especially the others below), the
+# advisory is flagged ai_generated so the UI can show an "AI can make mistakes"
+# note. See Advisory.ai_generated.
+VERIFIED_LANGUAGES = {Language.ENGLISH, Language.SOMALI, Language.SWAHILI}
 
 
 class ReportStatus(str, Enum):
@@ -66,6 +79,10 @@ class BasinConfig(BaseModel):
     warning_threshold_m3s: float = Field(description="Discharge threshold for warning (m³/s)")
     historical_median_m3s: float = Field(description="Long-term median discharge (m³/s)")
     description: str = ""
+    languages: list[Language] = Field(
+        default_factory=lambda: [Language.ENGLISH],
+        description="Locally relevant advisory languages, mother-tongue first",
+    )
 
 
 class BasinSummary(BaseModel):
@@ -80,6 +97,7 @@ class BasinSummary(BaseModel):
     current_discharge: Optional[float] = None
     flood_probability: Optional[float] = None
     last_updated: Optional[datetime] = None
+    languages: list[Language] = Field(default_factory=lambda: [Language.ENGLISH])
 
 
 # ─── Forecast Models ──────────────────────────────────────────────────────────
@@ -153,6 +171,10 @@ class Advisory(BaseModel):
     actions: list[str] = Field(description="Specific actions to take")
     generated_at: datetime
     valid_until: datetime
+    ai_generated: bool = Field(
+        default=False,
+        description="True when written by the AI model (may contain mistakes); False for human-reviewed templates",
+    )
 
 
 # ─── Alert Models ─────────────────────────────────────────────────────────────
@@ -198,6 +220,13 @@ class ReportSubmission(BaseModel):
     photo_url: Optional[str] = None
 
 
+class ReportEdit(BaseModel):
+    """Editable fields on a community report. All optional — only sent fields change."""
+    status: Optional[ReportStatus] = None
+    description: Optional[str] = None
+    reporter_name: Optional[str] = None
+
+
 class AdviceSubmission(BaseModel):
     """Advice or guidance to attach to a community report."""
     message: str = Field(min_length=2, max_length=1000)
@@ -236,5 +265,17 @@ class FullForecast(BaseModel):
     discharge: DischargeTimeSeries
     risk: FloodRiskScore
     impact: ImpactAssessment
-    advisory: Optional[Advisory] = None
     recent_reports: list[CommunityReport] = []
+
+# ─── Chat Response ────────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    message: str = Field(max_length=500)
+    role: UserRole = UserRole.GENERAL
+    language: Language = Language.ENGLISH
+    session_messages: list[dict] = Field(default_factory=list, description="Prior [{role, content}] turns")
+
+class ChatResponse(BaseModel):
+    reply: str
+    messages_remaining: int
+

@@ -20,9 +20,11 @@ groq==0.25.0
 # SMS
 africastalking==1.2.7
 
-# Database
+# Database — SQLite (aiosqlite) for local dev, Neon/Postgres (asyncpg) in prod
 sqlalchemy==2.0.30
 aiosqlite==0.20.0
+asyncpg==0.29.0
+greenlet>=3.0.0  # required by SQLAlchemy's async engine
 
 # Scheduling
 apscheduler==3.10.4

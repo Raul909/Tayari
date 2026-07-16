@@ -8,9 +8,11 @@ export default function ImpactPanel({ impact }) {
       <div className="impact-grid">
         <div className="impact-item">
           <div className="impact-value">
-            {impact.estimated_population_at_risk?.toLocaleString() || '0'}
+            {impact.estimated_population_at_risk
+              ? `~${impact.estimated_population_at_risk.toLocaleString()}`
+              : '0'}
           </div>
-          <div className="impact-label">People at Risk</div>
+          <div className="impact-label">Est. people at risk</div>
         </div>
         <div className="impact-item">
           <div className="impact-value">{impact.schools_at_risk || 0}</div>
@@ -40,6 +42,18 @@ export default function ImpactPanel({ impact }) {
           Projected flood zone: {impact.flood_zone_km} km from river
         </div>
       )}
+
+      <div
+        style={{
+          marginTop: '8px',
+          fontSize: '11px',
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          fontStyle: 'italic',
+        }}
+      >
+        Estimates from OCHA/IOM displacement data &amp; infrastructure mapping — not a live headcount.
+      </div>
     </div>
   );
 }

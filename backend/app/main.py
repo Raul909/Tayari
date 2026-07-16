@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import forecasts, alerts
+from app.routers import forecasts, alerts, chat
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -38,11 +38,20 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Groq API: {'configured' if settings.groq_api_key else 'NOT configured (using templates)'}")
     logger.info(f"   Africa's Talking: {'configured' if settings.at_api_key else 'NOT configured (simulated SMS)'}")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
+
+    # Create database tables and import any legacy JSON reports.
+    from app.db import init_db, close_db
+    from app.services.report_migration import migrate_legacy_reports
+    await init_db()
+    await migrate_legacy_reports()
+
     yield
+
     # Cleanup
     from app.services.flood_data import _client
     if _client and not _client.is_closed:
         await _client.aclose()
+    await close_db()
     logger.info("🌊 Tayari shutting down.")
 
 
@@ -92,6 +101,7 @@ app.add_middleware(
 # Register routers
 app.include_router(forecasts.router, prefix="/api", tags=["forecasts"])
 app.include_router(alerts.router, prefix="/api", tags=["alerts"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])
 
 # Serve uploaded report photos
 _uploads_dir = Path(__file__).parent.parent / "uploads"
@@ -113,6 +123,7 @@ async def root(request: Request):
             "basins": "/api/basins",
             "forecast": "/api/forecasts/{basin_id}",
             "advisory": "/api/advisory/{basin_id}",
+            "chat": "/api/chat/{basin_id}",
             "send_alert": "/api/alerts/send",
             "reports": "/api/reports",
         },

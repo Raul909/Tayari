@@ -101,13 +101,26 @@ export const ROLES = [
   { value: 'community_leader', label: 'Community Leader' },
 ];
 
-export const LANGUAGES = [
-  { value: 'en', label: 'English' },
-  { value: 'so', label: 'Somali' },
-  { value: 'sw', label: 'Swahili' },
-  { value: 'am', label: 'Amharic' },
-  { value: 'om', label: 'Oromo' },
-];
+// All languages Tayari can produce advisories in. The set shown for a given
+// basin is driven by that basin's `languages` list from the API (mother-tongue
+// first), so we never offer, say, Oromo for the Daasanach lower Omo.
+export const LANGUAGE_LABELS = {
+  en: 'English',
+  so: 'Somali',
+  sw: 'Swahili',
+  am: 'Amharic',
+  om: 'Oromo',
+  ar: 'Arabic',
+  aa: 'Afar',
+  din: 'Dinka',
+  dsh: 'Daasanach',
+  luy: 'Luhya',
+  tuv: 'Turkana',
+};
+
+export const LANGUAGES = Object.entries(LANGUAGE_LABELS).map(
+  ([value, label]) => ({ value, label })
+);
 
 export const REPORT_STATUSES = [
   { value: 'water_rising', label: 'Water rising', color: '#B0812C' },

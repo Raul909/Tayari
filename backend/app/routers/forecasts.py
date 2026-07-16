@@ -90,6 +90,7 @@ async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
             current_discharge=current_discharge,
             flood_probability=risk.probability,
             last_updated=datetime.utcnow(),
+            languages=basin.languages,
         )
     except Exception as e:
         logger.error(f"Error fetching data for basin {basin.id}: {e}")
@@ -100,6 +101,7 @@ async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
             country=basin.country,
             latitude=basin.gauge_point.latitude,
             longitude=basin.gauge_point.longitude,
+            languages=basin.languages,
         )
 
 
@@ -198,6 +200,7 @@ async def get_forecast(
             current_discharge=current_discharge,
             flood_probability=risk.probability,
             last_updated=datetime.utcnow(),
+            languages=basin.languages,
         ),
         discharge=DischargeTimeSeries(
             basin_id=basin_id,

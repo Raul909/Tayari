@@ -2,6 +2,7 @@ import './globals.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Navbar from '@/components/Navbar';
 import { ToastProvider } from '@/components/Toast';
+import { AuthProvider } from '@/lib/auth';
 
 export const metadata = {
   title: 'Tayari — Flood Early Warning',
@@ -21,12 +22,14 @@ export default function RootLayout({ children }) {
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body>
-        <ToastProvider>
-          <div className="app-layout">
-            <Navbar />
-            {children}
-          </div>
-        </ToastProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <div className="app-layout">
+              <Navbar />
+              {children}
+            </div>
+          </ToastProvider>
+        </AuthProvider>
       </body>
     </html>
   );

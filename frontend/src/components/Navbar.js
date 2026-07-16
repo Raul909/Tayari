@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import UserMenu from '@/components/UserMenu';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -29,6 +30,7 @@ export default function Navbar() {
             {link.label}
           </Link>
         ))}
+        <UserMenu />
       </div>
     </nav>
   );

@@ -74,8 +74,11 @@ graph TD
     subgraph Feedback Loop
         M -->|Geotagged Photo Reports| B
         K -->|Advice threads on reports| B
+        B -->|Reports · Advice · Alert log| DB[(Neon Postgres<br/>durable shared store)]
     end
 ```
+
+Community reports, their advice threads, and sent-alert history are persisted to **Neon (serverless Postgres)** through the backend. Both the web dashboard and the mobile app write and read through the same API, so a report filed from a phone in the field shows up on a coordinator's dashboard — and vice versa — backed by one shared database. Locally it falls back to SQLite so you can run everything with zero setup.
 
 A small **Cloudflare Worker** does double duty: it proxies Open-Meteo requests (avoiding upstream rate limits) and pings the Render backend on a cron schedule so free-tier cold starts never delay a warning.
 

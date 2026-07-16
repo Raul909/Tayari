@@ -32,6 +32,13 @@ except ImportError:
     HAS_LIGHTGBM = False
     logger.warning("LightGBM not installed — using heuristic model only")
 
+# The highest probability we will ever report. Operational flood forecasting
+# always carries irreducible uncertainty — model error, ungauged tributaries,
+# and growing forecast lead time — so a credible early-warning system never
+# tells a community it is "100% certain" to flood. We cap the signal here so
+# every downstream surface (web gauge, mobile, SMS, advisory) stays honest.
+MAX_FLOOD_PROBABILITY = 0.95
+
 
 def compute_flood_risk(
     basin: BasinConfig,
@@ -248,8 +255,9 @@ def compute_daily_probabilities(
         uncertainty_decay = 1.0 - (day_offset - 1) * 0.05
         combined_prob *= uncertainty_decay
 
-        # Clamp to [0, 1]
-        combined_prob = max(0.0, min(1.0, combined_prob))
+        # Clamp to [0, MAX]. The ceiling (not 1.0) keeps the forecast credible:
+        # even a river already over its banks carries residual uncertainty.
+        combined_prob = max(0.0, min(MAX_FLOOD_PROBABILITY, combined_prob))
         probabilities.append(combined_prob)
 
     return probabilities

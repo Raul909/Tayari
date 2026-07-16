@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { fetchBasins, fetchForecast, fetchReports, resolveAssetUrl } from '@/lib/api';
-import { RISK_COLORS, MAP_CENTER, ROLES, LANGUAGES, REPORT_STATUSES } from '@/lib/constants';
+import { RISK_COLORS, MAP_CENTER, ROLES, LANGUAGE_LABELS, REPORT_STATUSES } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
 import RiskGauge from '@/components/RiskGauge';
 import ForecastChart from '@/components/ForecastChart';
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const mapInstance = useRef(null);
   const markersRef = useRef([]);
   const reportMarkersRef = useRef([]);
+  const resizeObserverRef = useRef(null);
   // Monotonic token so a slow forecast response can't overwrite a newer one.
   const forecastReqId = useRef(0);
 
@@ -87,12 +88,23 @@ export default function Dashboard() {
 
       map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
       mapInstance.current = map;
+
+      // When the side panel opens/closes the map container changes width.
+      // MapLibre doesn't notice on its own, so its canvas keeps the old size
+      // and the view appears to jump toward a corner. Re-sync on every resize.
+      const ro = new ResizeObserver(() => map.resize());
+      ro.observe(mapRef.current);
+      resizeObserverRef.current = ro;
     } catch (e) {
       console.error('Failed to initialize map:', e);
       setError('The map could not start (WebGL error). Please check your browser settings.');
     }
 
     return () => {
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
       if (mapInstance.current) {
         mapInstance.current.remove();
         mapInstance.current = null;
@@ -241,7 +253,15 @@ export default function Dashboard() {
           essential: true,
         });
       }
-      loadForecast(basin);
+      // Snap the language to one this basin actually speaks. If it changes, the
+      // [role, language] effect fetches the forecast; otherwise fetch directly
+      // so we never fire two requests for one click.
+      const langs = basin.languages?.length ? basin.languages : ['en'];
+      if (!langs.includes(languageRef.current)) {
+        setLanguage(langs[0]);
+      } else {
+        loadForecast(basin);
+      }
     },
     [loadForecast]
   );
@@ -315,6 +335,12 @@ export default function Dashboard() {
 
       {selectedBasin && (
         <div className="side-panel">
+          <button 
+            className="mobile-back-btn" 
+            onClick={() => setSelectedBasin(null)}
+          >
+            ← Back to map
+          </button>
           {forecastLoading && !forecast ? (
             <div className="loading-container">
               <div className="spinner" />
@@ -419,19 +445,29 @@ export default function Dashboard() {
                     Language
                   </label>
                   <div className="lang-selector">
-                    {LANGUAGES.map((l) => (
+                    {(selectedBasin?.languages?.length
+                      ? selectedBasin.languages
+                      : ['en']
+                    ).map((code) => (
                       <button
-                        key={l.value}
-                        className={`lang-btn ${language === l.value ? 'active' : ''}`}
-                        onClick={() => setLanguage(l.value)}
+                        key={code}
+                        className={`lang-btn ${language === code ? 'active' : ''}`}
+                        onClick={() => setLanguage(code)}
                       >
-                        {l.label}
+                        {LANGUAGE_LABELS[code] || code}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {forecast.advisory && <AdvisoryCard advisory={forecast.advisory} />}
+                {forecast.advisory && (
+                  <AdvisoryCard 
+                    advisory={forecast.advisory} 
+                    basinId={selectedBasin?.id}
+                    role={role}
+                    language={language}
+                  />
+                )}
               </div>
             </>
           ) : null}
