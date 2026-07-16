@@ -190,7 +190,7 @@ RIVER BEHAVIOUR:
 {hydrology}
 
 EXPOSURE (within the {impact.flood_zone_km} km flood zone):
-- ~{impact.estimated_population_at_risk:,} people, {impact.schools_at_risk} schools, {impact.clinics_at_risk + impact.hospitals_at_risk} health facilities, {impact.markets_at_risk} markets
+- {impact.estimated_population_at_risk:,} people, {impact.schools_at_risk} schools, {impact.clinics_at_risk + impact.hospitals_at_risk} health facilities, {impact.markets_at_risk} markets
 
 READER: {ROLE_DESCRIPTIONS[role]}. Write in {LANGUAGE_NAMES[language]}.
 {language_note}

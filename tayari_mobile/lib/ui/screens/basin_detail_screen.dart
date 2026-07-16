@@ -381,8 +381,8 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
             Expanded(
               child: _impactBox(
                 Icons.people_outline,
-                'People (est.)',
-                people > 0 ? '~${_compact(people)}' : '0',
+                'People',
+                people > 0 ? _formatNumber(people) : '0',
               ),
             ),
             const SizedBox(width: 10),
@@ -435,10 +435,11 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
     );
   }
 
-  String _compact(int n) {
-    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}k';
-    return n.toString();
+  String _formatNumber(int n) {
+    return n.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
   }
 }
 

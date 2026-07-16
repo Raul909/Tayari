@@ -9,8 +9,8 @@ export default function ImpactPanel({ impact }) {
         <div className="impact-item">
           <div className="impact-value">
             {impact.estimated_population_at_risk
-              ? `~${impact.estimated_population_at_risk.toLocaleString()}`
-              : '0'}
+              ? impact.estimated_population_at_risk.toLocaleString()
+              : 'Unknown'}
           </div>
           <div className="impact-label">Est. people at risk</div>
         </div>
