@@ -32,7 +32,6 @@ export default function ReportPage() {
   useEffect(() => {
     loadReports();
     getLocation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function getLocation() {

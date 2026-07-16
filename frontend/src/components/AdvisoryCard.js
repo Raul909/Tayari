@@ -14,6 +14,7 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
 
   useEffect(() => {
     // Reset chat when advisory changes
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([]);
     setChatOpen(false);
     setMessagesRemaining(5);

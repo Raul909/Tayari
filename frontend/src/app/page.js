@@ -44,13 +44,6 @@ export default function Dashboard() {
 
   const { notify } = useToast();
 
-  // Load basins + community reports on mount
-  useEffect(() => {
-    loadBasins();
-    loadReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   async function loadBasins() {
     try {
       setLoading(true);
@@ -76,6 +69,55 @@ export default function Dashboard() {
       console.error('Failed to load reports:', err);
     }
   }
+
+  const loadForecast = async (basin) => {
+    const reqId = ++forecastReqId.current;
+    setForecastLoading(true);
+    try {
+      const data = await fetchForecast(basin.id, roleRef.current, languageRef.current);
+      if (reqId === forecastReqId.current) {
+        setForecast(data);
+      }
+    } catch (err) {
+      console.error('Failed to load forecast:', err);
+      if (reqId === forecastReqId.current) {
+        notify({
+          type: 'error',
+          title: 'Forecast unavailable',
+          message: `Could not load the forecast for ${basin.name}.`,
+        });
+      }
+    } finally {
+      if (reqId === forecastReqId.current) {
+        setForecastLoading(false);
+      }
+    }
+  };
+
+  const selectBasin = (basin) => {
+    setSelectedBasin(basin);
+    if (mapInstance.current) {
+      mapInstance.current.flyTo({
+        center: [basin.longitude, basin.latitude],
+        zoom: 9,
+        duration: 1400,
+        essential: true,
+      });
+    }
+    const langs = basin.languages?.length ? basin.languages : ['en'];
+    if (!langs.includes(languageRef.current)) {
+      setLanguage(langs[0]);
+    } else {
+      loadForecast(basin);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadBasins();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadReports();
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -111,6 +153,7 @@ export default function Dashboard() {
       resizeObserverRef.current = ro;
     } catch (e) {
       console.error('Failed to initialize map:', e);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError('The map could not start (WebGL error). Please check your browser settings.');
     }
 
@@ -227,65 +270,17 @@ export default function Dashboard() {
 
   // Fetch a basin's forecast without moving the map. Guarded against races,
   // and always reads the current role/language from refs.
-  const loadForecast = useCallback(
-    async (basin) => {
-      const reqId = ++forecastReqId.current;
-      setForecastLoading(true);
-      try {
-        const data = await fetchForecast(basin.id, roleRef.current, languageRef.current);
-        // Ignore if a newer request has since started.
-        if (reqId === forecastReqId.current) {
-          setForecast(data);
-        }
-      } catch (err) {
-        console.error('Failed to load forecast:', err);
-        if (reqId === forecastReqId.current) {
-          notify({
-            type: 'error',
-            title: 'Forecast unavailable',
-            message: `Could not load the forecast for ${basin.name}.`,
-          });
-        }
-      } finally {
-        if (reqId === forecastReqId.current) {
-          setForecastLoading(false);
-        }
-      }
-    },
-    [notify]
-  );
+  // (Moved loadForecast to the top to fix scope issues)
 
   // Select a basin: fly the map to it, then load its forecast.
-  const selectBasin = useCallback(
-    (basin) => {
-      setSelectedBasin(basin);
-      if (mapInstance.current) {
-        mapInstance.current.flyTo({
-          center: [basin.longitude, basin.latitude],
-          zoom: 9,
-          duration: 1400,
-          essential: true,
-        });
-      }
-      // Snap the language to one this basin actually speaks. If it changes, the
-      // [role, language] effect fetches the forecast; otherwise fetch directly
-      // so we never fire two requests for one click.
-      const langs = basin.languages?.length ? basin.languages : ['en'];
-      if (!langs.includes(languageRef.current)) {
-        setLanguage(langs[0]);
-      } else {
-        loadForecast(basin);
-      }
-    },
-    [loadForecast]
-  );
+  // (Moved selectBasin to the top to fix scope issues)
 
   // Role / language change: refresh only the advisory — no map movement.
   useEffect(() => {
     if (selectedBasin) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadForecast(selectedBasin);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, language]);
 
   if (authLoading) {
