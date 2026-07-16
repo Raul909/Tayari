@@ -162,6 +162,12 @@ a { color: inherit; }
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   padding: 18px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .card-header {
@@ -1137,4 +1143,104 @@ tr:hover td { background: var(--surface-sunken); }
 .user-dropdown-item:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
+}
+
+/* ─── Onboarding Splash ────────────────────────────────────────────── */
+
+.onboarding-splash {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.onboarding-content {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  max-width: 480px;
+  width: 100%;
+  padding: 40px 32px;
+  position: relative;
+  box-shadow: var(--shadow-md);
+}
+
+.onboarding-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+
+.onboarding-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.onboarding-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.onboarding-title {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.onboarding-subtitle {
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.onboarding-body {
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  text-align: center;
+  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .onboarding-content {
+    padding: 32px 20px;
+  }
+  
+  .onboarding-title {
+    font-size: 24px;
+  }
+  
+  .onboarding-body {
+    font-size: 14px;
+  }
 }

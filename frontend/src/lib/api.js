@@ -149,11 +149,11 @@ export function resolveAssetUrl(path) {
 /**
  * Send a chat message about an advisory.
  */
-export async function sendChatMessage(basinId, message, role = 'general', language = 'en', sessionMessages = []) {
+export async function sendChatMessage(basinId, message, role = 'general', language = 'en', sessionMessages = [], userId = null) {
   const res = await fetch(`${API_BASE}/api/chat/${basinId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, role, language, session_messages: sessionMessages }),
+    body: JSON.stringify({ message, role, language, session_messages: sessionMessages, user_id: userId }),
   });
   if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
   return res.json();

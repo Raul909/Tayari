@@ -278,6 +278,7 @@ class FullForecast(BaseModel):
     risk: FloodRiskScore
     impact: ImpactAssessment
     recent_reports: list[CommunityReport] = []
+    advisory: Optional[Advisory] = None
 
 # ─── Chat Response ────────────────────────────────────────────────────────────
 
@@ -286,6 +287,7 @@ class ChatRequest(BaseModel):
     role: UserRole = UserRole.GENERAL
     language: Language = Language.ENGLISH
     session_messages: list[dict] = Field(default_factory=list, description="Prior [{role, content}] turns")
+    user_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     reply: str

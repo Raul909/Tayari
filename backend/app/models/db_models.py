@@ -135,3 +135,18 @@ class UserPrefsORM(Base):
     )
 
     user: Mapped["UserProfileORM"] = relationship(back_populates="prefs")
+
+
+class ChatMemoryORM(Base):
+    """Stores conversation history for the Groq AI."""
+
+    __tablename__ = "chat_memories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    basin_id: Mapped[str] = mapped_column(String(64), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # 'user' or 'assistant'
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

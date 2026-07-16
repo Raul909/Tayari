@@ -35,12 +35,18 @@ def _get_basin_config(basin_id: str):
             return BasinConfig(**b)
     raise HTTPException(status_code=404, detail=f"Basin '{basin_id}' not found")
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.db import get_session
+from app.models.db_models import ChatMemoryORM
+
 @router.post("/chat/{basin_id}", response_model=ChatResponse)
 @limiter.limit("10/minute")
 async def chat_advisory(
     request: Request,
     basin_id: str,
     chat_req: ChatRequest,
+    session: AsyncSession = Depends(get_session)
 ):
     """
     Follow-up chat about a flood advisory.
@@ -94,6 +100,22 @@ User Role: {role_desc}
 """
 
     messages = [{"role": "system", "content": system_prompt.strip()}]
+    
+    # Load cross-session memories from DB
+    if chat_req.user_id:
+        stmt = (
+            select(ChatMemoryORM)
+            .where(ChatMemoryORM.user_id == chat_req.user_id)
+            .where(ChatMemoryORM.basin_id == basin_id)
+            .order_by(ChatMemoryORM.created_at.desc())
+            .limit(10)
+        )
+        result = await session.execute(stmt)
+        past_memories = result.scalars().all()
+        # Prepend to the session history in chronological order
+        for mem in reversed(past_memories):
+            messages.append({"role": mem.role, "content": mem.content})
+
     for m in chat_req.session_messages:
         messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
     
@@ -114,6 +136,23 @@ User Role: {role_desc}
     except Exception as e:
         logger.error(f"Groq API error during chat: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate chat response.")
+
+    # Save to memory
+    user_mem = ChatMemoryORM(
+        user_id=chat_req.user_id,
+        basin_id=basin_id,
+        role="user",
+        content=chat_req.message
+    )
+    asst_mem = ChatMemoryORM(
+        user_id=chat_req.user_id,
+        basin_id=basin_id,
+        role="assistant",
+        content=reply
+    )
+    session.add(user_mem)
+    session.add(asst_mem)
+    await session.commit()
 
     return ChatResponse(
         reply=reply,

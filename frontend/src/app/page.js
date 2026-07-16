@@ -9,6 +9,8 @@ import RiskGauge from '@/components/RiskGauge';
 import ForecastChart from '@/components/ForecastChart';
 import AdvisoryCard from '@/components/AdvisoryCard';
 import ImpactPanel from '@/components/ImpactPanel';
+import OnboardingSplash from '@/components/OnboardingSplash';
+import { useAuth } from '@/lib/auth';
 
 export default function Dashboard() {
   const mapRef = useRef(null);
@@ -28,6 +30,8 @@ export default function Dashboard() {
   const [role, setRole] = useState('general');
   const [language, setLanguage] = useState('en');
   const [error, setError] = useState(null);
+
+  const { user, loading: authLoading, isGuest, setGuest } = useAuth();
 
   // Refs mirror role/language so map markers (created once) always read the
   // current values instead of a value captured when the marker was made.
@@ -92,7 +96,11 @@ export default function Dashboard() {
       // When the side panel opens/closes the map container changes width.
       // MapLibre doesn't notice on its own, so its canvas keeps the old size
       // and the view appears to jump toward a corner. Re-sync on every resize.
-      const ro = new ResizeObserver(() => map.resize());
+      let resizeFrame;
+      const ro = new ResizeObserver(() => {
+        if (resizeFrame) cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => map.resize());
+      });
       ro.observe(mapRef.current);
       resizeObserverRef.current = ro;
     } catch (e) {
@@ -273,6 +281,19 @@ export default function Dashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, language]);
+
+  if (authLoading) {
+    return (
+      <div className="loading-container" style={{ minHeight: '100vh' }}>
+        <div className="spinner" />
+        <span>Loading Tayari...</span>
+      </div>
+    );
+  }
+
+  if (!user && !isGuest) {
+    return <OnboardingSplash onGuestContinue={() => setGuest(true)} />;
+  }
 
   return (
     <div className="main-content">

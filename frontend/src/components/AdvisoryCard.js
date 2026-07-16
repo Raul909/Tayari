@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { sendChatMessage } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 export default function AdvisoryCard({ advisory, basinId, role, language }) {
   const [chatOpen, setChatOpen] = useState(false);
@@ -9,6 +10,7 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [messagesRemaining, setMessagesRemaining] = useState(5);
+  const { user } = useAuth();
 
   useEffect(() => {
     // Reset chat when advisory changes
@@ -33,7 +35,7 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
     setSending(true);
 
     try {
-      const res = await sendChatMessage(basinId, newMsg.content, role, language, currentSession);
+      const res = await sendChatMessage(basinId, newMsg.content, role, language, currentSession, user?.id);
       setMessages([...currentSession, newMsg, { role: 'ai', content: res.reply }]);
       setMessagesRemaining(res.messages_remaining);
     } catch (err) {

@@ -12,6 +12,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isGuest, setGuest] = useState(false);
 
   useEffect(() => {
     // Check active sessions and sets the user
@@ -23,6 +24,9 @@ export function AuthProvider({ children }) {
     // Listen for changes on auth state (logged in, signed out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        setGuest(false);
+      }
       setLoading(false);
     });
 
@@ -32,6 +36,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    setGuest(false);
     return data;
   }, []);
 
@@ -44,16 +49,18 @@ export function AuthProvider({ children }) {
       }
     });
     if (error) throw error;
+    setGuest(false);
     return data;
   }, []);
 
   const logout = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    setGuest(false);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, supabase }}>
+    <AuthContext.Provider value={{ user, loading, isGuest, setGuest, login, register, logout, supabase }}>
       {children}
     </AuthContext.Provider>
   );
