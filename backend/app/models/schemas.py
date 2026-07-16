@@ -198,6 +198,22 @@ class ReportSubmission(BaseModel):
     photo_url: Optional[str] = None
 
 
+class AdviceSubmission(BaseModel):
+    """Advice or guidance to attach to a community report."""
+    message: str = Field(min_length=2, max_length=1000)
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+
+
+class ReportAdvice(BaseModel):
+    """Stored advice on a community report."""
+    id: int
+    message: str
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+    created_at: datetime
+
+
 class CommunityReport(BaseModel):
     """Stored community report."""
     id: int
@@ -209,6 +225,7 @@ class CommunityReport(BaseModel):
     reporter_name: Optional[str] = None
     photo_url: Optional[str] = None
     submitted_at: datetime
+    advice: list[ReportAdvice] = Field(default_factory=list)
 
 
 # ─── Full Forecast Response ───────────────────────────────────────────────────

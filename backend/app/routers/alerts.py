@@ -13,6 +13,7 @@ from typing import Optional
 from app.models.schemas import (
     AlertRequest, AlertResponse, AlertRecord,
     ReportSubmission, CommunityReport, ReportStatus,
+    AdviceSubmission, ReportAdvice,
     UserRole, Language,
 )
 from app.services.alerts import send_sms_alert
@@ -28,15 +29,46 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# In-memory stores (use database in production)
-_alert_history: list[AlertRecord] = []
-_community_reports: list[CommunityReport] = []
-_report_id_counter = 0
-_alert_id_counter = 0
-
 # Upload directory for report photos
 UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads" / "reports"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Reports are persisted to a JSON file so they survive backend restarts.
+_REPORTS_STORE = Path(__file__).parent.parent / "data" / "community_reports.json"
+
+
+def _load_reports() -> tuple[list[CommunityReport], int, int]:
+    if not _REPORTS_STORE.exists():
+        return [], 0, 0
+    try:
+        raw = json.loads(_REPORTS_STORE.read_text())
+        reports = [CommunityReport(**r) for r in raw.get("reports", [])]
+        return (
+            reports,
+            raw.get("report_id_counter", len(reports)),
+            raw.get("advice_id_counter", 0),
+        )
+    except Exception:
+        logger.exception("Could not load persisted community reports — starting empty")
+        return [], 0, 0
+
+
+def _save_reports() -> None:
+    try:
+        payload = {
+            "reports": [r.model_dump(mode="json") for r in _community_reports],
+            "report_id_counter": _report_id_counter,
+            "advice_id_counter": _advice_id_counter,
+        }
+        _REPORTS_STORE.write_text(json.dumps(payload, indent=2))
+    except Exception:
+        logger.exception("Could not persist community reports")
+
+
+# In-memory stores (alerts are ephemeral; reports are backed by the JSON store)
+_alert_history: list[AlertRecord] = []
+_community_reports, _report_id_counter, _advice_id_counter = _load_reports()
+_alert_id_counter = 0
 
 # Load basin config helper
 _basins_path = Path(__file__).parent.parent / "data" / "basins.json"
@@ -156,6 +188,7 @@ async def submit_report(report: ReportSubmission):
     )
 
     _community_reports.append(community_report)
+    _save_reports()
     logger.info(f"Community report #{_report_id_counter} submitted for {report.basin_id}")
 
     return community_report
@@ -210,6 +243,7 @@ async def submit_report_with_photo(
     )
 
     _community_reports.append(community_report)
+    _save_reports()
     logger.info(f"Community report #{_report_id_counter} (with photo) submitted for {basin_id}")
 
     return community_report
@@ -225,3 +259,31 @@ async def get_reports(
     if basin_id:
         reports = [r for r in reports if r.basin_id == basin_id]
     return reports[-limit:]
+
+
+@router.post("/reports/{report_id}/advice", response_model=CommunityReport)
+async def add_report_advice(report_id: int, advice: AdviceSubmission):
+    """
+    Attach advice or guidance to a community report.
+
+    Coordinators, responders, and fellow community members can respond to a
+    field report with concrete guidance — where to evacuate, which road is
+    passable, who to contact. The advice thread is returned with the report.
+    """
+    global _advice_id_counter
+
+    for report in _community_reports:
+        if report.id == report_id:
+            _advice_id_counter += 1
+            report.advice.append(ReportAdvice(
+                id=_advice_id_counter,
+                message=advice.message.strip(),
+                author_name=advice.author_name,
+                author_role=advice.author_role,
+                created_at=datetime.utcnow(),
+            ))
+            _save_reports()
+            logger.info(f"Advice #{_advice_id_counter} added to report #{report_id}")
+            return report
+
+    raise HTTPException(status_code=404, detail=f"Report #{report_id} not found")

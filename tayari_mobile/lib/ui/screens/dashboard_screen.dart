@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import '../../models/basin.dart';
 import '../../providers/basin_provider.dart';
 import '../../providers/db_provider.dart';
 import '../../providers/prefs_provider.dart';
 import '../theme.dart';
 import 'basin_detail_screen.dart';
+import 'community_reports_screen.dart';
 import 'settings_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -18,10 +20,53 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   MapLibreMapController? mapController;
   bool _syncing = false;
+  bool _styleLoaded = false;
+  final Map<String, Basin> _circleBasin = {};
 
   void _onMapCreated(MapLibreMapController controller) {
     mapController = controller;
+    controller.onCircleTapped.add(_onCircleTapped);
   }
+
+  @override
+  void dispose() {
+    mapController?.onCircleTapped.remove(_onCircleTapped);
+    super.dispose();
+  }
+
+  void _onCircleTapped(Circle circle) {
+    final basin = _circleBasin[circle.id];
+    if (basin == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => BasinDetailScreen(basin: basin)),
+    );
+  }
+
+  /// Draw one risk-coloured pin per monitored basin on the map.
+  Future<void> _drawBasinMarkers(List<Basin> basins) async {
+    final controller = mapController;
+    if (controller == null || !_styleLoaded || basins.isEmpty) return;
+
+    await controller.clearCircles();
+    _circleBasin.clear();
+
+    for (final basin in basins) {
+      final color = _toHex(AppColors.risk(basin.currentRisk));
+      final circle = await controller.addCircle(CircleOptions(
+        geometry: LatLng(basin.latitude, basin.longitude),
+        circleRadius: 10,
+        circleColor: color,
+        circleOpacity: 0.85,
+        circleStrokeColor: '#FFFFFF',
+        circleStrokeWidth: 2,
+      ));
+      _circleBasin[circle.id] = basin;
+    }
+  }
+
+  static String _toHex(Color c) =>
+      '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
 
   Future<void> _manualSync() async {
     setState(() => _syncing = true);
@@ -49,6 +94,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final basinsAsyncValue = ref.watch(basinsStreamProvider);
     final homeBasinId = ref.watch(userPrefsProvider).homeBasinId;
 
+    // Redraw map pins whenever the basin data changes (e.g. after a sync).
+    ref.listen(basinsStreamProvider, (previous, next) {
+      next.whenData(_drawBasinMarkers);
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tayari'),
@@ -63,6 +113,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 : const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _syncing ? null : _manualSync,
+          ),
+          IconButton(
+            icon: const Icon(Icons.forum_outlined),
+            tooltip: 'Community reports',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CommunityReportsScreen()),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -80,6 +140,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: [
           MapLibreMap(
             onMapCreated: _onMapCreated,
+            onStyleLoadedCallback: () {
+              _styleLoaded = true;
+              final basins = ref.read(basinsStreamProvider).value;
+              if (basins != null) _drawBasinMarkers(basins);
+            },
             initialCameraPosition: const CameraPosition(
               target: LatLng(2.0, 42.0), // IGAD region
               zoom: 5.0,

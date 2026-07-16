@@ -24,11 +24,27 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   String _status = 'Water rising';
   bool _isSubmitting = false;
 
-  Future<void> _takePhoto() async {
-    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
-    if (photo != null) {
-      setState(() => _imageFile = File(photo.path));
-      _getLocation(); // Capture location automatically alongside the photo
+  Future<void> _takePhoto() => _pickImage(ImageSource.camera);
+
+  Future<void> _pickFromGallery() => _pickImage(ImageSource.gallery);
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (photo != null) {
+        setState(() => _imageFile = File(photo.path));
+        _getLocation(); // Capture location automatically alongside the photo
+      }
+    } catch (e) {
+      _snack(
+        source == ImageSource.camera
+            ? 'Could not open the camera. Try "Choose from gallery" instead.'
+            : 'Could not open the gallery: $e',
+      );
     }
   }
 
@@ -115,7 +131,21 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: _imageFile != null
-                    ? Image.file(_imageFile!, fit: BoxFit.cover)
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.file(_imageFile!, fit: BoxFit.cover),
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: ElevatedButton.icon(
+                              onPressed: _takePhoto,
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('Retake'),
+                            ),
+                          ),
+                        ],
+                      )
                     : Container(
                         decoration: BoxDecoration(
                           color: AppColors.surfaceSunken,
@@ -134,6 +164,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                               const Text(
                                 'Take a photo of the conditions',
                                 style: TextStyle(color: AppColors.textMuted),
+                              ),
+                              TextButton(
+                                onPressed: _pickFromGallery,
+                                child: const Text('or choose from gallery'),
                               ),
                             ],
                           ),

@@ -90,6 +90,39 @@ export async function submitReport(report) {
 }
 
 /**
+ * Submit a community report with a photo as multipart/form-data.
+ */
+export async function submitReportWithPhoto(fields, photoFile) {
+  const formData = new FormData();
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && value !== '') {
+      formData.append(key, value);
+    }
+  });
+  if (photoFile) formData.append('photo', photoFile);
+
+  const res = await fetch(`${API_BASE}/api/reports/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`Failed to submit report: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Attach advice/guidance to a community report.
+ */
+export async function submitAdvice(reportId, advice) {
+  const res = await fetch(`${API_BASE}/api/reports/${reportId}/advice`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(advice),
+  });
+  if (!res.ok) throw new Error(`Failed to submit advice: ${res.status}`);
+  return res.json();
+}
+
+/**
  * Get community reports.
  */
 export async function fetchReports(basinId = null) {
@@ -99,4 +132,12 @@ export async function fetchReports(basinId = null) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch reports: ${res.status}`);
   return res.json();
+}
+
+/**
+ * Resolve a backend-relative asset path (e.g. /uploads/…) to a full URL.
+ */
+export function resolveAssetUrl(path) {
+  if (!path) return null;
+  return path.startsWith('http') ? path : `${API_BASE}${path}`;
 }

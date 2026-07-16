@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import { fetchBasins, fetchForecast, fetchReports } from '@/lib/api';
+import { fetchBasins, fetchForecast, fetchReports, resolveAssetUrl } from '@/lib/api';
 import { RISK_COLORS, MAP_CENTER, ROLES, LANGUAGES, REPORT_STATUSES } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
 import RiskGauge from '@/components/RiskGauge';
@@ -175,10 +175,15 @@ export default function Dashboard() {
       `;
       el.title = `${status.label}${report.reporter_name ? ` — ${report.reporter_name}` : ''}`;
 
+      const photoUrl = resolveAssetUrl(report.photo_url);
       const popupHtml = `
         <strong>${status.label}</strong>${
         report.description
           ? `<br/><span style="color:#6b6558">${escapeHtml(report.description)}</span>`
+          : ''
+      }${
+        photoUrl
+          ? `<img src="${photoUrl}" alt="Report photo" loading="lazy" style="width:180px;max-height:120px;object-fit:cover;border-radius:6px;margin-top:6px;display:block"/>`
           : ''
       }<br/><span style="color:#938c7e;font-size:11px">${
         report.reporter_name ? `by ${escapeHtml(report.reporter_name)} · ` : ''

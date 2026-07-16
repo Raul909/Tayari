@@ -16,6 +16,10 @@ node_modules/
 .next/
 out/
 
+# Runtime data (created by the backend at runtime)
+backend/app/data/community_reports.json
+backend/uploads/
+
 # Environment (CRITICAL — never commit API keys)
 .env
 .env.local

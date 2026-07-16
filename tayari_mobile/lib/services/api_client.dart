@@ -43,8 +43,36 @@ class ApiClient {
     return 'http://127.0.0.1:8000/api';
   }
 
+  /// Base URL for static assets (report photos) — API base without `/api`.
+  static String get assetBaseUrl =>
+      _resolveBaseUrl().replaceFirst(RegExp(r'/api$'), '');
+
   Future<List<dynamic>> getBasins() async {
     final response = await _dio.get('/basins');
+    return response.data;
+  }
+
+  /// Fetch community reports (newest last), optionally for a single basin.
+  Future<List<dynamic>> getReports({String? basinId, int limit = 100}) async {
+    final response = await _dio.get('/reports', queryParameters: {
+      'basin_id': ?basinId,
+      'limit': limit,
+    });
+    return response.data;
+  }
+
+  /// Attach advice to a community report; returns the updated report.
+  Future<Map<String, dynamic>> postAdvice(
+    int reportId, {
+    required String message,
+    String? authorName,
+    String? authorRole,
+  }) async {
+    final response = await _dio.post('/reports/$reportId/advice', data: {
+      'message': message,
+      if (authorName != null && authorName.isNotEmpty) 'author_name': authorName,
+      if (authorRole != null && authorRole.isNotEmpty) 'author_role': authorRole,
+    });
     return response.data;
   }
 

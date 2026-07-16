@@ -60,7 +60,7 @@ async def generate_advisory(
     """
     Generate an AI-powered advisory for a specific audience.
 
-    Tries Claude API first, falls back to templates if unavailable.
+    Tries the Groq API first, falls back to templates if unavailable.
 
     Args:
         risk: Current flood risk score
@@ -112,38 +112,61 @@ async def _generate_with_groq(
     """Generate advisory using Groq API (fast LLM inference)."""
     client = Groq(api_key=settings.groq_api_key)
 
-    prompt = f"""You are Tayari, an AI flood early-warning system for East Africa. Generate a flood advisory.
+    # Surface the model's hydrology features so the advisory can reason about
+    # the actual river behaviour, not just an abstract risk label.
+    features = risk.model_features or {}
+    hydrology_lines = []
+    if features.get("discharge_current"):
+        hydrology_lines.append(
+            f"- River flow now: {features['discharge_current']:.0f} m³/s"
+        )
+    if features.get("discharge_flood_ratio"):
+        hydrology_lines.append(
+            f"- Water is at {features['discharge_flood_ratio'] * 100:.0f}% of the level that floods the plain"
+        )
+    if features.get("discharge_anomaly"):
+        hydrology_lines.append(
+            f"- Flow vs normal for this time of year: {features['discharge_anomaly']:.1f}× the historical median"
+        )
+    if features.get("discharge_trend_3d") is not None:
+        trend = features["discharge_trend_3d"]
+        direction = "RISING" if trend > 0 else ("FALLING" if trend < 0 else "STEADY")
+        hydrology_lines.append(f"- 3-day trend: {direction} ({trend:+.0f} m³/s per day)")
+    if features.get("discharge_forecast_max"):
+        hydrology_lines.append(
+            f"- Highest forecast flow in next 7 days: {features['discharge_forecast_max']:.0f} m³/s"
+        )
+    hydrology = "\n".join(hydrology_lines) if hydrology_lines else "- (no gauge detail available)"
 
-CONTEXT:
-- Location: {basin_name}, {river_name}, {country}
-- Flood Risk Level: {risk.risk_level.value}
-- Flood Probability (next 3 days): {risk.probability * 100:.0f}%
-- Estimated Days Until Threshold: {risk.threshold_exceedance_days or 'Unknown'}
-- 7-Day Probabilities: {', '.join(f'Day {i+1}: {p*100:.0f}%' for i, p in enumerate(risk.probabilities_7day))}
+    # Which forecast day carries the highest risk — the real danger window.
+    peak_day = (
+        max(range(len(risk.probabilities_7day)), key=lambda i: risk.probabilities_7day[i]) + 1
+        if risk.probabilities_7day else None
+    )
 
-IMPACT:
-- Population at risk: ~{impact.estimated_population_at_risk:,}
-- Schools at risk: {impact.schools_at_risk}
-- Health facilities at risk: {impact.clinics_at_risk + impact.hospitals_at_risk}
-- Markets at risk: {impact.markets_at_risk}
-- Flood zone: {impact.flood_zone_km} km from river
+    prompt = f"""You are the advisory writer for Tayari, a flood early-warning system for East Africa. You combine the judgement of a hydrologist with the instincts of an experienced humanitarian field officer. You write impact-based warnings in the WMO style: not what the forecast IS, but what the water will DO and what this specific reader must DO about it.
 
-TARGET AUDIENCE:
-- This advisory is for {ROLE_DESCRIPTIONS[role]}
-- Write in {LANGUAGE_NAMES[language]}
+SITUATION — {basin_name} ({river_name}, {country}), {datetime.utcnow():%d %b %Y}:
+- Risk level: {risk.risk_level.value} | Probability of flooding (next 3 days): {risk.probability * 100:.0f}%
+- Day-by-day probability (next 7 days): {', '.join(f'D{i+1}: {p*100:.0f}%' for i, p in enumerate(risk.probabilities_7day))}
+- Highest-risk day: {'Day ' + str(peak_day) if peak_day else 'unknown'} | Estimated days until flood threshold is crossed: {risk.threshold_exceedance_days if risk.threshold_exceedance_days is not None else 'not expected in forecast window'}
 
-INSTRUCTIONS:
-1. Write a short TITLE (max 10 words). Match the tone to the risk level:
-   LOW = calm reassurance, MODERATE = watchful, HIGH/EXTREME = urgent.
-2. Write a BODY paragraph (3-5 sentences) that is:
-   - In simple, clear language a non-expert can understand — no jargon, no panic
-   - Grounded in the numbers: reference the {risk.probability * 100:.0f}% probability and,
-     if given, the day the flood threshold may be crossed
-   - Specific about timing ("within 2 days", "before the weekend")
-   - Specific about what to do (not just "be prepared")
-   - For LOW risk, reassure and give light preparedness steps — do NOT tell people to evacuate
-3. List 3-5 concrete ACTIONS the person can actually do, tailored to their role and location.
-   Order them by what to do first. Keep each action to one short sentence.
+RIVER BEHAVIOUR:
+{hydrology}
+
+EXPOSURE (within the {impact.flood_zone_km} km flood zone):
+- ~{impact.estimated_population_at_risk:,} people, {impact.schools_at_risk} schools, {impact.clinics_at_risk + impact.hospitals_at_risk} health facilities, {impact.markets_at_risk} markets
+
+READER: {ROLE_DESCRIPTIONS[role]}. Write in {LANGUAGE_NAMES[language]}.
+
+Before writing, reason silently: When is the real danger window? Is the river rising or falling, and how fast? What does this specific risk mean for this reader's family, crops, herd, or duties? What can they realistically do in the next 24–48 hours with what they have? Then output ONLY the final advisory.
+
+RULES:
+1. TITLE — max 10 words, specific to this river and moment, not a generic label.
+2. BODY — 3–5 short sentences. Lead with the single most important fact. Give the danger window as concrete days ("between Thursday and Saturday", "within 2 days"), not vague soon-language. Translate one or two numbers into meaning a non-expert feels (e.g. "the river is already carrying twice its normal water"). Never dump all the statistics. No jargon, no panic, no exclamation marks.
+3. ACTIONS — 3 to 5, ordered by urgency. Each starts with a verb, is doable within 24–48 hours with local resources, and is tailored to the reader's role (a farmer moves grain and livestock; an officer pre-positions boats and alerts clinics). At most ONE information-type action. Banned phrases: "stay informed", "be prepared", "monitor the situation", "stay tuned", "remain vigilant".
+4. Tone must match risk: LOW = calm reassurance with one or two light preparedness steps, never evacuation; MODERATE = watchful, start protecting assets; HIGH/EXTREME = urgent and directive.
+5. If the trend is FALLING or the risk is easing, say so honestly — credibility today is what makes people act on the warning tomorrow.
 
 Format your response EXACTLY as:
 TITLE: [title]
@@ -176,7 +199,7 @@ def _parse_advisory_response(
     role: UserRole,
     language: Language,
 ) -> Advisory:
-    """Parse Claude's response into an Advisory object."""
+    """Parse the LLM response into an Advisory object."""
     title = ""
     body = ""
     actions = []
@@ -231,7 +254,7 @@ def _generate_template_advisory(
     language: Language,
 ) -> Advisory:
     """
-    Template-based advisory fallback when Claude is unavailable.
+    Template-based advisory fallback when the LLM is unavailable.
     Supports English, Somali, and Swahili with pre-written templates.
     """
     days = risk.threshold_exceedance_days or 3

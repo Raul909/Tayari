@@ -1,11 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Deliberately NO android.permission.CAMERA: photos are captured by
+         delegating to the system camera app (image_picker). Declaring the
+         permission without requesting it at runtime makes that delegation
+         throw a SecurityException. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
-        android:label="tayari_mobile"
+        android:label="Tayari"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

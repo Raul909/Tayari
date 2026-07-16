@@ -32,7 +32,7 @@ Tayari is **free to use** and open source, because an early warning should never
 - 🌍 **Overlays** impact data, estimating the population and critical infrastructure (schools, clinics, roads) at risk in each basin.
 - 🗣️ **Translates** technical jargon into role-specific advisories in **English, Somali, Swahili, Amharic, and Oromo** using an LLM — with pre-written template fallbacks so warnings go out even if the AI is down.
 - 📱 **Delivers** alerts via the Africa's Talking SMS gateway, a fast Next.js PWA dashboard for coordinators, and a Flutter mobile app for the field.
-- 📸 **Listens** — community members submit geotagged photo reports of ground conditions, closing the loop between forecast and reality.
+- 📸 **Listens** — community members submit geotagged photo reports of ground conditions, and coordinators or neighbours respond with advice threads (safe routes, closed bridges, who to contact) that everyone can see, closing the loop between forecast and reality.
 
 ---
 
@@ -73,6 +73,7 @@ graph TD
 
     subgraph Feedback Loop
         M -->|Geotagged Photo Reports| B
+        K -->|Advice threads on reports| B
     end
 ```
 
@@ -139,7 +140,7 @@ cd tayari_mobile
 flutter pub get
 flutter run
 ```
-*Note: The mobile app requires Camera and GPS permissions to submit geotagged community flood reports. Reports made while offline will be queued and synced automatically once a connection is restored.*
+*Note: Photos are captured through the system camera app (no camera permission needed); the app asks for GPS permission to geotag community flood reports. Reports made while offline will be queued and synced automatically once a connection is restored.*
 
 ---
 
@@ -161,3 +162,24 @@ I chose tools that are fast, reliable, and perfectly suited for a machine-learni
 ## 🎯 The Hindcast Demo (Nov 2023)
 
 One of the coolest features to check out is the historical hindcast. If you query the historical data for the Shabelle basin around October-November 2023, you can watch the model predict the devastating Beledweyne floods days before they happened. It's a powerful validation of the system's potential to save lives.
+
+---
+
+## 🗺️ Roadmap — making lives easier, one feature at a time
+
+Ideas we're actively thinking about, roughly in order of how many people they'd help:
+
+| Feature | Why it matters |
+|---------|----------------|
+| **Two-way SMS & USSD** | Most at-risk households have basic phones, not smartphones. Subscribing to alerts and reporting conditions by texting a shortcode would reach the last mile. |
+| **Voice advisories (IVR)** | Text excludes people who can't read. A phone call that reads the advisory aloud in Somali or Oromo serves elders and non-literate residents. |
+| **Push notifications** | Free, instant risk-level-change alerts for the mobile app's home basin — no SMS costs for anyone. |
+| **Safe-route guidance** | Don't just say "go to high ground" — show the route to the nearest assembly point, updated by community reports of closed roads and bridges. |
+| **Satellite verification** | Cross-check community reports and forecasts against Sentinel-1 radar flood extent, so coordinators can separate rumor from reality. |
+| **Anticipatory cash triggers** | Link HIGH-risk forecasts to humanitarian cash-transfer programs, so families can act *before* the water arrives, not after. |
+| **Household registry** | Let community leaders register vulnerable households (elderly, disabled, pregnant) per basin so evacuations start with those who need the most time. |
+| **Drought & locust modules** | The basin-config architecture already supports new hazards — same pipeline, different data feeds. |
+| **Low-cost river gauges** | Solar LoRa water-level sensors at bridges would give ground truth between GloFAS grid points and sharpen the model. |
+| **Printable sitreps** | One-click PDF situation reports for county officers to brief governors and share with responders who work offline. |
+
+Have an idea that would help your community? [Open an issue](https://github.com/Raul909/Tayari/issues) — Tayari is built in the open.

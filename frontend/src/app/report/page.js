@@ -1,7 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { submitReport, fetchReports } from '@/lib/api';
+import { useState, useEffect, useRef } from 'react';
+import {
+  submitReport,
+  submitReportWithPhoto,
+  submitAdvice,
+  fetchReports,
+  resolveAssetUrl,
+} from '@/lib/api';
 import { BASINS, REPORT_STATUSES } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
 
@@ -12,10 +18,14 @@ export default function ReportPage() {
   const [reporterName, setReporterName] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [reports, setReports] = useState([]);
+  const [feedBasin, setFeedBasin] = useState('all');
   const [geoError, setGeoError] = useState(null);
   const [locating, setLocating] = useState(false);
+  const photoInputRef = useRef(null);
 
   const { notify } = useToast();
 
@@ -58,25 +68,44 @@ export default function ReportPage() {
     }
   }
 
+  function handlePhotoChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
+  function clearPhoto() {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
 
     try {
-      const report = await submitReport({
+      const fields = {
         basin_id: basinId,
         status,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
         description: description || null,
         reporter_name: reporterName || null,
-      });
+      };
+      const report = photoFile
+        ? await submitReportWithPhoto(fields, photoFile)
+        : await submitReport(fields);
       notify({
         type: 'success',
         title: 'Report submitted',
         message: `Report #${report.id} recorded. It now shows on the dashboard map.`,
       });
       setDescription('');
+      clearPhoto();
       loadReports();
     } catch (err) {
       notify({ type: 'error', title: 'Could not submit', message: err.message });
@@ -85,18 +114,29 @@ export default function ReportPage() {
     }
   }
 
+  function handleReportUpdated(updated) {
+    setReports((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
+
+  const visibleReports = reports
+    .filter((r) => feedBasin === 'all' || r.basin_id === feedBasin)
+    .slice()
+    .reverse()
+    .slice(0, 20);
+
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1 className="page-title">Community report</h1>
+        <h1 className="page-title">Community reports</h1>
         <p className="page-description">
-          Report ground conditions from the field. Your report helps verify forecasts and
-          appears as a pin on the dashboard map.
+          Report ground conditions from the field, see what others are reporting, and respond
+          with advice. Reports appear as pins on the dashboard map and serve as ground truth
+          for the forecasts.
         </p>
       </div>
 
       <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: '1fr 1fr' }}>
-        <div className="card">
+        <div className="card" style={{ alignSelf: 'start' }}>
           <div className="card-header">
             <div className="card-title">Submit a report</div>
           </div>
@@ -147,6 +187,59 @@ export default function ReportPage() {
                   );
                 })}
               </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Photo of the conditions (optional)</label>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoChange}
+                style={{ display: 'none' }}
+              />
+              {photoPreview ? (
+                <div style={{ position: 'relative' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photoPreview}
+                    alt="Report preview"
+                    style={{
+                      width: '100%',
+                      maxHeight: '220px',
+                      objectFit: 'cover',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-color)',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      Retake
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={clearPhoto}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{
+                    border: '1px dashed var(--border-strong)',
+                    padding: '18px',
+                    width: '100%',
+                  }}
+                >
+                  📷 Take or choose a photo
+                </button>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -221,80 +314,208 @@ export default function ReportPage() {
           </form>
         </div>
 
-        <div className="card">
+        <div className="card" style={{ alignSelf: 'start' }}>
           <div className="card-header">
-            <div className="card-title">Recent reports</div>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              {reports.length} total
-            </span>
+            <div className="card-title">Reports from the field</div>
+            <select
+              className="form-select"
+              value={feedBasin}
+              onChange={(e) => setFeedBasin(e.target.value)}
+              style={{ width: 'auto', fontSize: '12px', padding: '4px 8px' }}
+            >
+              <option value="all">All basins</option>
+              {Object.values(BASINS).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {reports.length === 0 ? (
+          {visibleReports.length === 0 ? (
             <div className="empty-state">No community reports yet. Be the first to report.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {reports
-                .slice()
-                .reverse()
-                .slice(0, 10)
-                .map((r) => {
-                  const statusInfo =
-                    REPORT_STATUSES.find((s) => s.value === r.status) || REPORT_STATUSES[0];
-                  return (
-                    <div
-                      key={r.id}
-                      style={{
-                        background: 'var(--surface-sunken)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 'var(--radius-sm)',
-                        padding: '12px',
-                        borderLeft: `3px solid ${statusInfo.color}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <span style={{ fontSize: '13px', fontWeight: 600 }}>
-                          {statusInfo.label}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            color: 'var(--text-muted)',
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        >
-                          {new Date(r.submitted_at).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      {r.description && (
-                        <div
-                          style={{
-                            fontSize: '12px',
-                            color: 'var(--text-secondary)',
-                            marginTop: '4px',
-                          }}
-                        >
-                          {r.description}
-                        </div>
-                      )}
-                      <div
-                        style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}
-                      >
-                        {r.latitude.toFixed(4)}, {r.longitude.toFixed(4)}
-                        {r.reporter_name && ` · by ${r.reporter_name}`}
-                      </div>
-                    </div>
-                  );
-                })}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {visibleReports.map((r) => (
+                <ReportCard
+                  key={r.id}
+                  report={r}
+                  onUpdated={handleReportUpdated}
+                  notify={notify}
+                />
+              ))}
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ReportCard({ report, onUpdated, notify }) {
+  const [showAdviceForm, setShowAdviceForm] = useState(false);
+  const [adviceMessage, setAdviceMessage] = useState('');
+  const [adviceName, setAdviceName] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const statusInfo =
+    REPORT_STATUSES.find((s) => s.value === report.status) || REPORT_STATUSES[0];
+  const basinName = BASINS[report.basin_id]?.name || report.basin_id;
+  const photoUrl = resolveAssetUrl(report.photo_url);
+  const advice = report.advice || [];
+
+  async function handleAdviceSubmit(e) {
+    e.preventDefault();
+    if (adviceMessage.trim().length < 2) return;
+    setSending(true);
+    try {
+      const updated = await submitAdvice(report.id, {
+        message: adviceMessage.trim(),
+        author_name: adviceName.trim() || null,
+      });
+      onUpdated(updated);
+      setAdviceMessage('');
+      setShowAdviceForm(false);
+      notify({
+        type: 'success',
+        title: 'Advice sent',
+        message: `Your guidance is now attached to report #${report.id}.`,
+      });
+    } catch (err) {
+      notify({ type: 'error', title: 'Could not send advice', message: err.message });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        background: 'var(--surface-sunken)',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '12px',
+        borderLeft: `3px solid ${statusInfo.color}`,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '13px', fontWeight: 600 }}>{statusInfo.label}</span>
+        <span
+          style={{
+            fontSize: '11px',
+            color: 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          {new Date(report.submitted_at).toLocaleString()}
+        </span>
+      </div>
+
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+        {basinName}
+      </div>
+
+      {photoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photoUrl}
+          alt={`Report #${report.id} conditions`}
+          loading="lazy"
+          style={{
+            width: '100%',
+            maxHeight: '200px',
+            objectFit: 'cover',
+            borderRadius: 'var(--radius-sm)',
+            marginTop: '8px',
+            border: '1px solid var(--border-color)',
+          }}
+        />
+      )}
+
+      {report.description && (
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+          {report.description}
+        </div>
+      )}
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+        {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+        {report.reporter_name && ` · by ${report.reporter_name}`}
+      </div>
+
+      {advice.length > 0 && (
+        <div
+          style={{
+            marginTop: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+          }}
+        >
+          {advice.map((a) => (
+            <div
+              key={a.id}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '8px 10px',
+                fontSize: '12px',
+              }}
+            >
+              <div style={{ color: 'var(--text-secondary)' }}>{a.message}</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                💬 {a.author_name || 'Responder'} ·{' '}
+                {new Date(a.created_at).toLocaleString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdviceForm ? (
+        <form
+          onSubmit={handleAdviceSubmit}
+          style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}
+        >
+          <textarea
+            className="form-textarea"
+            value={adviceMessage}
+            onChange={(e) => setAdviceMessage(e.target.value)}
+            placeholder="e.g. The bridge at the market is already closed — use the northern road to reach high ground."
+            rows={2}
+            required
+          />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              className="form-input"
+              type="text"
+              value={adviceName}
+              onChange={(e) => setAdviceName(e.target.value)}
+              placeholder="Your name (optional)"
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-primary btn-sm" type="submit" disabled={sending}>
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowAdviceForm(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          style={{ marginTop: '10px' }}
+          onClick={() => setShowAdviceForm(true)}
+        >
+          💬 Give advice{advice.length > 0 ? ` (${advice.length})` : ''}
+        </button>
+      )}
     </div>
   );
 }
