@@ -18,6 +18,13 @@ subprojects {
     afterEvaluate {
         project.extensions.findByName("android")?.let { android ->
             try {
+                android.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(android, 34)
+            } catch (e: Exception) {
+                try {
+                    android.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(android, 34)
+                } catch (e2: Exception) { }
+            }
+            try {
                 val namespace = android.javaClass.getMethod("getNamespace").invoke(android) as? String
                 if (namespace.isNullOrEmpty()) {
                     val groupStr = project.group.toString()
