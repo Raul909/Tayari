@@ -18,10 +18,10 @@ subprojects {
     afterEvaluate {
         project.extensions.findByName("android")?.let { android ->
             try {
-                android.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(android, 34)
+                android.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType).invoke(android, 36)
             } catch (e: Exception) {
                 try {
-                    android.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(android, 34)
+                    android.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType).invoke(android, 36)
                 } catch (e2: Exception) { }
             }
             try {
