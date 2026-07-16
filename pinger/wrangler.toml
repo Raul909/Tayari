@@ -5,4 +5,4 @@ compatibility_date = "2024-07-15"
 # Ping Render every 5 minutes to prevent the free tier from sleeping
 # (Render sleeps after 15 minutes of inactivity — 5min gives comfortable margin)
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/14 3-21 * * *"]

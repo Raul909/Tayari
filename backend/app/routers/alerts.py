@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import (
-    APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile,
+    APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, Request
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.limiter import limiter
 
 from app.db import get_session
 from app.models.db_models import AdviceORM, AlertORM, ReportORM
@@ -244,7 +245,9 @@ async def get_alert_history(
 # ─── Community Report Endpoints ──────────────────────────────────────────────
 
 @router.post("/reports", response_model=CommunityReport)
+@limiter.limit("5/minute")
 async def submit_report(
+    request: Request,
     report: ReportSubmission,
     session: AsyncSession = Depends(get_session),
 ):
@@ -273,7 +276,9 @@ async def submit_report(
 
 
 @router.post("/reports/upload", response_model=CommunityReport)
+@limiter.limit("5/minute")
 async def submit_report_with_photo(
+    request: Request,
     basin_id: str = Form(...),
     status: str = Form(...),
     latitude: float = Form(...),

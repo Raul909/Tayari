@@ -3,9 +3,10 @@ User routes for Tayari, including profile preferences and saved basins.
 Protected by Supabase JWT auth.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from app.limiter import limiter
 
 from app.db import get_session
 from app.models.db_models import UserProfileORM, SavedBasinORM, UserPrefsORM
@@ -18,7 +19,9 @@ router = APIRouter(prefix="/api/user", tags=["User"])
 
 
 @router.get("/me", response_model=UserProfile)
+@limiter.limit("20/minute")
 async def get_my_profile(
+    request: Request,
     user: UserProfileORM = Depends(get_current_user),
 ):
     """Get the current authenticated user's profile."""
@@ -26,7 +29,9 @@ async def get_my_profile(
 
 
 @router.put("/me", response_model=UserProfile)
+@limiter.limit("20/minute")
 async def update_my_profile(
+    request: Request,
     display_name: str | None = None,
     preferred_role: str | None = None,
     preferred_language: str | None = None,
@@ -47,7 +52,9 @@ async def update_my_profile(
 
 
 @router.get("/basins", response_model=list[SavedBasinResponse])
+@limiter.limit("20/minute")
 async def get_saved_basins(
+    request: Request,
     user: UserProfileORM = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -59,7 +66,9 @@ async def get_saved_basins(
 
 
 @router.post("/basins/{basin_id}", response_model=SavedBasinResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def save_basin(
+    request: Request,
     basin_id: str,
     user: UserProfileORM = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -85,7 +94,9 @@ async def save_basin(
 
 
 @router.delete("/basins/{basin_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("20/minute")
 async def remove_saved_basin(
+    request: Request,
     basin_id: str,
     user: UserProfileORM = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -100,7 +111,9 @@ async def remove_saved_basin(
 
 
 @router.get("/prefs", response_model=UserPrefsResponse)
+@limiter.limit("20/minute")
 async def get_user_prefs(
+    request: Request,
     user: UserProfileORM = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -117,7 +130,9 @@ async def get_user_prefs(
 
 
 @router.put("/prefs", response_model=UserPrefsResponse)
+@limiter.limit("20/minute")
 async def update_user_prefs(
+    request: Request,
     prefs_update: UserPrefsUpdate,
     user: UserProfileORM = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
