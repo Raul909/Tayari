@@ -1,6 +1,6 @@
 import 'dart:io' show File, Platform;
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 
 import '../models/report.dart';
 import 'groq_service.dart';
@@ -25,12 +25,20 @@ class ApiClient {
     _dio.interceptors.add(LogInterceptor());
   }
 
-  /// The host loopback address differs by platform: the Android emulator
-  /// reaches the host machine at 10.0.2.2, everything else at 127.0.0.1.
-  /// Override with --dart-define=API_BASE_URL=... for a real device/server.
+  /// The deployed backend. Release builds (the distributed APK) always target
+  /// this — an end user's phone has no local dev server to reach.
+  static const _productionBaseUrl = 'https://tayari-api.onrender.com/api';
+
+  /// Resolves the backend base URL:
+  ///   1. An explicit `--dart-define=API_BASE_URL=...` always wins.
+  ///   2. Release builds default to the deployed production backend.
+  ///   3. Debug/profile builds default to the local dev server. The host
+  ///      loopback differs by platform: the Android emulator reaches the host
+  ///      machine at 10.0.2.2, everything else at 127.0.0.1.
   static String _resolveBaseUrl() {
     const override = String.fromEnvironment('API_BASE_URL');
     if (override.isNotEmpty) return override;
+    if (kReleaseMode) return _productionBaseUrl;
     if (!kIsWeb && Platform.isAndroid) return 'http://10.0.2.2:8000/api';
     return 'http://127.0.0.1:8000/api';
   }

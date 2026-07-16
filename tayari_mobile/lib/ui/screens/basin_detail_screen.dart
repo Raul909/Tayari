@@ -200,6 +200,8 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
         DropdownMenuItem(value: 'en', child: Text('English')),
         DropdownMenuItem(value: 'sw', child: Text('Swahili')),
         DropdownMenuItem(value: 'so', child: Text('Somali')),
+        DropdownMenuItem(value: 'am', child: Text('Amharic')),
+        DropdownMenuItem(value: 'om', child: Text('Oromo')),
       ],
       onChanged: (val) {
         if (val == null) return;

@@ -148,7 +148,7 @@ ACTIONS:
 - [action 2]
 - [action 3]
 
-Write the ENTIRE response in {LANGUAGE_NAMES[language]}. Do NOT include any English if the target language is not English."""
+CRITICAL: Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown — they are parsing markers. Write only the CONTENT (the title text, body text, and each action) in {LANGUAGE_NAMES[language]}. Do not translate or omit the labels, and do not add any other English text."""
 
     # The Groq SDK client is synchronous; run it off the event loop
     # so the generation doesn't block other concurrent requests.

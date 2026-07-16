@@ -49,3 +49,8 @@ models/*.bin
 
 # Backend virtualenv
 backend/venv/
+
+# Hugging Face deployment scripts and logs
+hf_*.py
+*.log
+.commandcode/

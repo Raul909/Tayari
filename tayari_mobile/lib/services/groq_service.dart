@@ -96,7 +96,7 @@ ACTIONS:
 - [action 2]
 - [action 3]
 
-Write the ENTIRE response in $langName.''';
+CRITICAL: Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown — they are parsing markers. Write only the CONTENT in $langName. Do not translate or omit the labels.''';
 
     try {
       final response = await _dio.post(_baseUrl, data: {
