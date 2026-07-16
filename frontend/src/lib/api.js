@@ -49,10 +49,14 @@ export async function fetchAdvisory(basinId, role = 'general', language = 'en') 
 /**
  * Send an SMS alert.
  */
-export async function sendAlert(basinId, role, language, phoneNumbers) {
+export async function sendAlert(basinId, role, language, phoneNumbers, token) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const res = await fetch(`${API_BASE}/api/alerts/send`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       basin_id: basinId,
       role,

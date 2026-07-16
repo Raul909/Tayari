@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     at_username: str = "sandbox"
     at_api_key: Optional[str] = os.getenv("AT_API_KEY")
+    hf_api_token: Optional[str] = os.getenv("HF_API_TOKEN")
 
     # Database & Auth
     database_url: str = "sqlite+aiosqlite:///./tayari.db"
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     # External APIs (routed through Cloudflare Worker proxy to avoid Render rate limits)
     flood_api_base: str = "https://tayari-pinger.indialayers-dev.workers.dev/flood"
     weather_api_base: str = "https://tayari-pinger.indialayers-dev.workers.dev/weather"
+    cloudflare_sms_url: str = "https://tayari-pinger.indialayers-dev.workers.dev/sms"
 
     # Frontend URL (for CORS)
     frontend_url: str = "http://localhost:3000"

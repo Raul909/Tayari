@@ -45,6 +45,10 @@ class Language(str, Enum):
 # note. See Advisory.ai_generated.
 VERIFIED_LANGUAGES = {Language.ENGLISH, Language.SOMALI, Language.SWAHILI}
 
+# Languages that do not have reliable automated text-to-speech support
+# and therefore strictly require human-in-the-loop manual voice recording.
+LOW_RESOURCE_LANGUAGES = {Language.DAASANACH, Language.DINKA, Language.AFAR, Language.LUHYA, Language.TURKANA}
+
 
 class ReportStatus(str, Enum):
     WATER_RISING = "water_rising"
@@ -174,6 +178,14 @@ class Advisory(BaseModel):
     ai_generated: bool = Field(
         default=False,
         description="True when written by the AI model (may contain mistakes); False for human-reviewed templates",
+    )
+    voice_note_url: Optional[str] = Field(
+        default=None,
+        description="URL to the generated or uploaded audio warning"
+    )
+    requires_recording: bool = Field(
+        default=False,
+        description="True if automated TTS failed or language is low-resource, requiring human recording"
     )
 
 

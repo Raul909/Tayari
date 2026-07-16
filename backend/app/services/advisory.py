@@ -50,7 +50,7 @@ LANGUAGE_NAMES = {
 # East African languages — e.g. rendering "people" as a word meaning
 # "propaganda" in Oromo — so we hand the model the right words up front.
 FLOOD_GLOSSARY = {
-    Language.OROMO: "flood = 'lolaa' (NOT 'dhihaa', which means west); people = 'namoota' (NEVER 'olola', which means propaganda); boats = 'bidiruu'; schools = 'manneen barnootaa'; health facilities = 'buufataalee fayyaa'; markets = 'gabaa'",
+    Language.OROMO: "flood = 'lolaa' (NOT 'dhihaa', which means west); people = 'namoota' (NEVER 'olola', which means propaganda); boats = 'bidiruu' (never 'galaasaa'); schools = 'manneen barnootaa'; health facilities = 'buufataalee fayyaa'; markets = 'gabaa'",
     Language.AMHARIC: "flood = 'ጎርፍ'; people = 'ሰዎች'; boats = 'ጀልባዎች'; schools = 'ትምህርት ቤቶች'; health facilities = 'የጤና ተቋማት'; markets = 'ገበያዎች'",
     Language.ARABIC: "flood = 'فيضان'; people = 'أشخاص'; boats = 'قوارب'; schools = 'مدارس'; health facilities = 'مرافق صحية'; markets = 'أسواق'",
 }
@@ -125,62 +125,33 @@ async def _generate_with_groq(
     role: UserRole,
     language: Language,
 ) -> Advisory:
-    """Generate advisory using Groq API (fast LLM inference)."""
+    """Generate advisory using Groq API (fast LLM inference) with a Two-Step Pipeline."""
     client = Groq(api_key=settings.groq_api_key)
 
-    # Surface the model's hydrology features so the advisory can reason about
-    # the actual river behaviour, not just an abstract risk label.
     features = risk.model_features or {}
     hydrology_lines = []
     if features.get("discharge_current"):
-        hydrology_lines.append(
-            f"- River flow now: {features['discharge_current']:.0f} m³/s"
-        )
+        hydrology_lines.append(f"- River flow now: {features['discharge_current']:.0f} m³/s")
     if features.get("discharge_flood_ratio"):
-        hydrology_lines.append(
-            f"- Water is at {features['discharge_flood_ratio'] * 100:.0f}% of the level that floods the plain"
-        )
+        hydrology_lines.append(f"- Water is at {features['discharge_flood_ratio'] * 100:.0f}% of the level that floods the plain")
     if features.get("discharge_anomaly"):
-        hydrology_lines.append(
-            f"- Flow vs normal for this time of year: {features['discharge_anomaly']:.1f}× the historical median"
-        )
+        hydrology_lines.append(f"- Flow vs normal for this time of year: {features['discharge_anomaly']:.1f}× the historical median")
     if features.get("discharge_trend_3d") is not None:
         trend = features["discharge_trend_3d"]
         direction = "RISING" if trend > 0 else ("FALLING" if trend < 0 else "STEADY")
         hydrology_lines.append(f"- 3-day trend: {direction} ({trend:+.0f} m³/s per day)")
     if features.get("discharge_forecast_max"):
-        hydrology_lines.append(
-            f"- Highest forecast flow in next 7 days: {features['discharge_forecast_max']:.0f} m³/s"
-        )
-    hydrology = "\n".join(hydrology_lines) if hydrology_lines else "- (no gauge detail available)"
+        hydrology_lines.append(f"- Highest forecast flow in next 7 days: {features['discharge_forecast_max']:.0f} m³/s")
+    hydrology = "
+".join(hydrology_lines) if hydrology_lines else "- (no gauge detail available)"
 
-    # Which forecast day carries the highest risk — the real danger window.
     peak_day = (
         max(range(len(risk.probabilities_7day)), key=lambda i: risk.probabilities_7day[i]) + 1
         if risk.probabilities_7day else None
     )
 
-    # Give the model the correct safety vocabulary for tricky languages, and
-    # spell out translation-fidelity rules to prevent the classic failures
-    # (mistranslated "flood"/"people", untranslated English, garbled numbers).
-    glossary = FLOOD_GLOSSARY.get(language)
-    if language == Language.ENGLISH:
-        language_note = ""
-    else:
-        language_note = (
-            f"\nLANGUAGE — write EVERYTHING (title, body, actions) in natural, fluent "
-            f"{LANGUAGE_NAMES[language]} that a resident would actually use:\n"
-            f"- Translate every word. Do NOT leave any English words in the output "
-            f"(the TITLE:/BODY:/ACTIONS: markers stay in English, nothing else).\n"
-            f"- Keep all numbers as digits exactly as given (e.g. 50,000; 126%). "
-            f"Never spell them out or translate the digits.\n"
-            f"- Use the everyday local word for 'flood' and 'people' — not a "
-            f"transliteration of the English word.\n"
-            + (f"- Required vocabulary: {glossary}\n" if glossary else "")
-        )
-
-    prompt = f"""You are the advisory writer for Tayari, a flood early-warning system for East Africa. You combine the judgement of a hydrologist with the instincts of an experienced humanitarian field officer. You write impact-based warnings in the WMO style: not what the forecast IS, but what the water will DO and what this specific reader must DO about it.
-
+    # STEP 1: Generate Base Advisory in English
+    english_prompt = f"""You are the advisory writer for Tayari, a flood early-warning system for East Africa.
 SITUATION — {basin_name} ({river_name}, {country}), {datetime.utcnow():%d %b %Y}:
 - Risk level: {risk.risk_level.value} | Probability of flooding (next 3 days): {risk.probability * 100:.0f}%
 - Day-by-day probability (next 7 days): {', '.join(f'D{i+1}: {p*100:.0f}%' for i, p in enumerate(risk.probabilities_7day))}
@@ -192,16 +163,12 @@ RIVER BEHAVIOUR:
 EXPOSURE (within the {impact.flood_zone_km} km flood zone):
 - {impact.estimated_population_at_risk:,} people, {impact.schools_at_risk} schools, {impact.clinics_at_risk + impact.hospitals_at_risk} health facilities, {impact.markets_at_risk} markets
 
-READER: {ROLE_DESCRIPTIONS[role]}. Write in {LANGUAGE_NAMES[language]}.
-{language_note}
-Before writing, reason silently: When is the real danger window? Is the river rising or falling, and how fast? What does this specific risk mean for this reader's family, crops, herd, or duties? What can they realistically do in the next 24–48 hours with what they have? Then output ONLY the final advisory.
-
+READER: {ROLE_DESCRIPTIONS[role]}. Write in English.
 RULES:
 1. TITLE — max 10 words, specific to this river and moment, not a generic label.
 2. BODY — 3–5 short sentences. Lead with the single most important fact. Give the danger window as concrete days ("between Thursday and Saturday", "within 2 days"), not vague soon-language. Translate one or two numbers into meaning a non-expert feels (e.g. "the river is already carrying twice its normal water"). Never dump all the statistics. No jargon, no panic, no exclamation marks.
 3. ACTIONS — 3 to 5, ordered by urgency. Each starts with a verb, is doable within 24–48 hours with local resources, and is tailored to the reader's role (a farmer moves grain and livestock; an officer pre-positions boats and alerts clinics). At most ONE information-type action. Banned phrases: "stay informed", "be prepared", "monitor the situation", "stay tuned", "remain vigilant".
-4. Tone must match risk: LOW = calm reassurance with one or two light preparedness steps, never evacuation; MODERATE = watchful, start protecting assets; HIGH/EXTREME = urgent and directive.
-5. If the trend is FALLING or the risk is easing, say so honestly — credibility today is what makes people act on the warning tomorrow.
+4. Tone must match risk. If the trend is FALLING or the risk is easing, say so honestly.
 
 Format your response EXACTLY as:
 TITLE: [title]
@@ -210,22 +177,71 @@ ACTIONS:
 - [action 1]
 - [action 2]
 - [action 3]
-
-CRITICAL: Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown — they are parsing markers. Write only the CONTENT (the title text, body text, and each action) in {LANGUAGE_NAMES[language]}. Do not translate or omit the labels, and do not add any other English text."""
-
-    # The Groq SDK client is synchronous; run it off the event loop
-    # so the generation doesn't block other concurrent requests.
-    response = await asyncio.to_thread(
+"""
+    response_en = await asyncio.to_thread(
         client.chat.completions.create,
         model=settings.groq_model,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": english_prompt}],
         max_tokens=1024,
         temperature=0.7,
     )
+    english_text = response_en.choices[0].message.content.strip()
+    
+    if language == Language.ENGLISH:
+        final_text = english_text
+    else:
+        # STEP 2: Translation
+        glossary = FLOOD_GLOSSARY.get(language, "")
+        translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
+RULES:
+1. Translate every word of the content. Do NOT leave any English words (like Thursday or Saturday) in the output.
+2. Keep all numbers as digits exactly as given (e.g. 50,000; 126%). Never spell them out.
+3. Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown. Only translate the text after them.
+4. IMPORTANT VOCABULARY TO USE strictly (failure to use these is life-threatening): {glossary}
+"""
+        if language == Language.OROMO:
+            translate_prompt += """
+Example translation for Oromo:
+English:
+TITLE: Flood Warning — Omo River (High Level)
+BODY: Omo River discharge has reached 126% and may cross the flood threshold within one day (Thursday to Saturday). In the danger zone are 50,000 people, 7 schools, 4 health facilities, and 4 markets.
+ACTIONS:
+- Prepare boats and ambulances in advance.
 
-    # Parse the response
-    text = response.choices[0].message.content
-    return _parse_advisory_response(text, risk, role, language, ai_generated=True)
+Oromo Translation:
+TITLE: Akeekkachiisa Lolaa — Laga Omoo (Sadarkaa Ol'aanaa)
+BODY: Dhangala'iinsi Laga Omoo %126 gahee, guyyaa tokko keessatti daangaa lolaa darbuu danda'a (Kamisa hanga Sanbataa). Naannoo balaa keessa namoonni 50,000, manneen barnootaa 7, buufataalee fayyaa 4, fi gabaan 4 argamu.
+ACTIONS:
+- Bidiruuwwanii fi ambulaansota dursanii qopheessaa.
+"""
+        translate_prompt += f"
+
+Source Advisory in English:
+{english_text}"
+        
+        response_tl = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=settings.groq_model,
+            messages=[{"role": "user", "content": translate_prompt}],
+            max_tokens=1024,
+            temperature=0.3,
+        )
+        final_text = response_tl.choices[0].message.content.strip()
+        
+        # STEP 3: Verification Layer
+        if language == Language.OROMO:
+            if "dhihaa" in final_text.lower() or "olola" in final_text.lower():
+                # Failsafe simple replace to prevent catastrophic translation
+                final_text = final_text.replace("dhihaa", "lolaa").replace("Dhihaa", "Lolaa")
+                final_text = final_text.replace("olola", "namoota").replace("Olola", "Namoota")
+
+    advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
+    
+    # Check for custom voice note or generate TTS
+    from app.services.voice import get_or_generate_voice_note
+    advisory = await get_or_generate_voice_note(advisory)
+        
+    return advisory
 
 
 def _parse_advisory_response(

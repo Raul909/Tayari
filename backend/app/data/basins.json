@@ -210,7 +210,7 @@
     },
     "juba": {
       "MODERATE": {
-        "population_at_risk": 31245,
+        "population_at_risk": 58000,
         "schools": 2,
         "clinics": 1,
         "hospitals": 0,
@@ -218,7 +218,7 @@
         "flood_zone_km": 2
       },
       "HIGH": {
-        "population_at_risk": 75830,
+        "population_at_risk": 145000,
         "schools": 4,
         "clinics": 2,
         "hospitals": 0,
@@ -226,7 +226,7 @@
         "flood_zone_km": 5
       },
       "EXTREME": {
-        "population_at_risk": 128450,
+        "population_at_risk": 260000,
         "schools": 8,
         "clinics": 3,
         "hospitals": 1,

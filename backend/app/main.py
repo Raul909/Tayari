@@ -109,6 +109,11 @@ _uploads_dir = Path(__file__).parent.parent / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
+# Serve generated voice notes
+_audio_dir = Path(__file__).parent.parent / "static/audio"
+_audio_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static/audio", StaticFiles(directory=str(_audio_dir)), name="audio")
+
 
 @app.get("/api/info")
 async def root(request: Request):

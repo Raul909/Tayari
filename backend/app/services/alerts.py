@@ -37,26 +37,17 @@ def _init_at():
             logger.error(f"Failed to initialize Africa's Talking: {e}")
 
 
+import aiohttp
+
 async def send_sms_alert(
     message: str,
     phone_numbers: list[str],
     sender_id: str = "TAYARI",
 ) -> AlertResponse:
     """
-    Send an SMS alert to the specified phone numbers.
-
-    In sandbox mode, messages are simulated in the AT dashboard.
-
-    Args:
-        message: The advisory text to send
-        phone_numbers: List of phone numbers in international format
-        sender_id: SMS sender ID (used in production)
-
-    Returns:
-        AlertResponse with success status and delivery info
+    Send an SMS alert by delegating to the Cloudflare Worker proxy.
+    This ensures 24/7 high availability even if this backend process restarts.
     """
-    _init_at()
-
     if not phone_numbers:
         return AlertResponse(
             success=False,
@@ -69,45 +60,38 @@ async def send_sms_alert(
     if len(message) > 480:
         message = message[:477] + "..."
 
-    if _sms_service is not None:
-        try:
-            response = _sms_service.send(message, phone_numbers)
-            sms_data = response.get("SMSMessageData", {})
-            recipients = sms_data.get("Recipients", [])
-            success_count = sum(
-                1 for r in recipients
-                if r.get("statusCode") == 101  # 101 = Sent
-            )
-
-            logger.info(
-                f"SMS sent to {len(phone_numbers)} numbers, "
-                f"{success_count} successful"
-            )
-
-            return AlertResponse(
-                success=success_count > 0,
-                message=f"Sent to {success_count}/{len(phone_numbers)} recipients",
-                sms_count=success_count,
-                advisory_preview=message[:100],
-            )
-
-        except Exception as e:
-            logger.error(f"SMS sending failed: {e}")
-            return AlertResponse(
-                success=False,
-                message=f"SMS delivery failed: {str(e)}",
-                sms_count=0,
-                advisory_preview=message[:100],
-            )
-    else:
-        # Simulate SMS for demo
-        logger.info(
-            f"[SIMULATED SMS] To: {phone_numbers} | Message: {message[:80]}..."
-        )
+    payload = {
+        "message": message,
+        "phone_numbers": phone_numbers,
+        "sender_id": sender_id
+    }
+    
+    logger.info(f"Delegating SMS to Cloudflare Worker ({len(phone_numbers)} recipients)")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(settings.cloudflare_sms_url, json=payload, timeout=10) as resp:
+                if resp.status in (200, 202):
+                    return AlertResponse(
+                        success=True,
+                        message=f"Sent to {len(phone_numbers)} recipients via Cloudflare Worker",
+                        sms_count=len(phone_numbers),
+                        advisory_preview=message[:100],
+                    )
+                else:
+                    text = await resp.text()
+                    logger.error(f"Cloudflare Worker SMS failed: {resp.status} - {text}")
+                    return AlertResponse(
+                        success=False,
+                        message=f"Cloudflare Worker failed: {resp.status}",
+                        sms_count=0,
+                        advisory_preview=message[:100],
+                    )
+    except Exception as e:
+        logger.error(f"SMS Cloudflare Worker delegation failed: {e}")
         return AlertResponse(
-            success=True,
-            message=f"[Simulated] Would send to {len(phone_numbers)} recipients. "
-                    f"Configure AT_API_KEY in .env for real SMS delivery.",
-            sms_count=len(phone_numbers),
+            success=False,
+            message=f"Cloudflare connection failed: {str(e)}",
+            sms_count=0,
             advisory_preview=message[:100],
         )

@@ -33,6 +33,27 @@ from app.services.flood_model import compute_flood_risk
 from app.services.impact import compute_impact
 from app.services.weather_data import fetch_upstream_rainfall
 
+import jwt
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.config import settings
+
+security = HTTPBearer()
+
+async def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not settings.supabase_jwt_secret:
+        return None # Auth disabled if no secret
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid authentication credentials: {e}")
+
+
 import json
 
 logger = logging.getLogger(__name__)
@@ -92,6 +113,7 @@ async def send_alert(
     request: AlertRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
+    user_payload: dict = Depends(verify_supabase_jwt),
 ):
     """
     Send an SMS alert for a basin (Load Balanced).
