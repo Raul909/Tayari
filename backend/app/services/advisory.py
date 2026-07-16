@@ -142,8 +142,7 @@ async def _generate_with_groq(
         hydrology_lines.append(f"- 3-day trend: {direction} ({trend:+.0f} m³/s per day)")
     if features.get("discharge_forecast_max"):
         hydrology_lines.append(f"- Highest forecast flow in next 7 days: {features['discharge_forecast_max']:.0f} m³/s")
-    hydrology = "
-".join(hydrology_lines) if hydrology_lines else "- (no gauge detail available)"
+    hydrology = "\n".join(hydrology_lines) if hydrology_lines else "- (no gauge detail available)"
 
     peak_day = (
         max(range(len(risk.probabilities_7day)), key=lambda i: risk.probabilities_7day[i]) + 1
@@ -214,10 +213,10 @@ BODY: Dhangala'iinsi Laga Omoo %126 gahee, guyyaa tokko keessatti daangaa lolaa 
 ACTIONS:
 - Bidiruuwwanii fi ambulaansota dursanii qopheessaa.
 """
-        translate_prompt += f"
+        translate_prompt += f"""
 
 Source Advisory in English:
-{english_text}"
+{english_text}"""
         
         response_tl = await asyncio.to_thread(
             client.chat.completions.create,
