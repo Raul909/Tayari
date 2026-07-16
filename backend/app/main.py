@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import forecasts, alerts, chat
+from app.routers import forecasts, alerts, chat, user
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -102,6 +102,7 @@ app.add_middleware(
 app.include_router(forecasts.router, prefix="/api", tags=["forecasts"])
 app.include_router(alerts.router, prefix="/api", tags=["alerts"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(user.router)
 
 # Serve uploaded report photos
 _uploads_dir = Path(__file__).parent.parent / "uploads"
@@ -124,6 +125,7 @@ async def root(request: Request):
             "forecast": "/api/forecasts/{basin_id}",
             "advisory": "/api/advisory/{basin_id}",
             "chat": "/api/chat/{basin_id}",
+            "user": "/api/user/me",
             "send_alert": "/api/alerts/send",
             "reports": "/api/reports",
         },

@@ -279,3 +279,28 @@ class ChatResponse(BaseModel):
     reply: str
     messages_remaining: int
 
+
+# ─── Auth and User Models ─────────────────────────────────────────────────────
+
+class UserProfile(BaseModel):
+    id: str
+    display_name: Optional[str] = None
+    preferred_role: str
+    preferred_language: str
+    created_at: datetime
+
+class SavedBasinResponse(BaseModel):
+    basin_id: str
+    created_at: datetime
+
+class UserPrefsResponse(BaseModel):
+    phone_number: Optional[str] = None
+    sms_language: str
+    sms_role: str
+    notify_risk_level: str
+
+class UserPrefsUpdate(BaseModel):
+    phone_number: Optional[str] = None
+    sms_language: Optional[str] = None
+    sms_role: Optional[str] = None
+    notify_risk_level: Optional[str] = None

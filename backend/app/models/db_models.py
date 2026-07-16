@@ -10,7 +10,7 @@ never changes.
 from datetime import datetime
 
 from sqlalchemy import (
-    DateTime, Float, ForeignKey, Integer, String, Text, func,
+    DateTime, Float, ForeignKey, Integer, String, Text, func, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,3 +76,62 @@ class AlertORM(Base):
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(),
     )
+
+
+class UserProfileORM(Base):
+    """User profile data linked to Supabase Auth UUID."""
+
+    __tablename__ = "user_profiles"
+
+    # Supabase uses UUIDs for auth.users.id, which we store as a 36-char string.
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    preferred_role: Mapped[str] = mapped_column(String(32), default="general")
+    preferred_language: Mapped[str] = mapped_column(String(8), default="en")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(),
+    )
+
+    saved_basins: Mapped[list["SavedBasinORM"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+    prefs: Mapped["UserPrefsORM"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="joined"
+    )
+
+
+class SavedBasinORM(Base):
+    """A basin bookmarked by a user."""
+
+    __tablename__ = "saved_basins"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"), index=True)
+    basin_id: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(),
+    )
+
+    user: Mapped["UserProfileORM"] = relationship(back_populates="saved_basins")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "basin_id", name="uq_user_basin"),
+    )
+
+
+class UserPrefsORM(Base):
+    """Notification preferences for a user."""
+
+    __tablename__ = "user_prefs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user_profiles.id", ondelete="CASCADE"), unique=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sms_language: Mapped[str] = mapped_column(String(8), default="en")
+    sms_role: Mapped[str] = mapped_column(String(32), default="general")
+    notify_risk_level: Mapped[str] = mapped_column(String(16), default="HIGH")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["UserProfileORM"] = relationship(back_populates="prefs")

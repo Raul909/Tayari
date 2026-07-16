@@ -22,8 +22,9 @@ class Settings(BaseSettings):
     at_username: str = "sandbox"
     at_api_key: Optional[str] = os.getenv("AT_API_KEY")
 
-    # Database
+    # Database & Auth
     database_url: str = "sqlite+aiosqlite:///./tayari.db"
+    supabase_jwt_secret: Optional[str] = None
 
     # External APIs (routed through Cloudflare Worker proxy to avoid Render rate limits)
     flood_api_base: str = "https://tayari-pinger.indialayers-dev.workers.dev/flood"
