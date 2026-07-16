@@ -2,20 +2,37 @@
   <h1>🌊 Tayari</h1>
   <p><b>AI Flood Early Warning & Early Action System</b></p>
   <p><i>Built for the IGAD Hackathon 2026</i></p>
+  <p>
+    <a href="https://tayari.pages.dev"><b>🌐 Use it now — free at tayari.pages.dev</b></a>
+    ·
+    <a href="https://github.com/Raul909/Tayari/releases"><b>📱 Download the Android app</b></a>
+  </p>
 </div>
 
 ---
 
-**Tayari** (Swahili for *Ready*) is an end-to-end early warning system designed to give communities in the IGAD region a fighting chance against devastating floods. 
+## 💛 The Cause
 
-Too often, highly technical meteorological data stays trapped in dashboards. I built Tayari to close the gap between **information generated** and **information acted upon**. It doesn't just predict floods—it translates those forecasts into actionable, plain-language advisories in local languages and delivers them directly via SMS.
+In November 2023, floods on the Shabelle River displaced **half a million people** around Beledweyne. In South Sudan, floods between 2020 and 2022 affected **over a million**. In April–May 2024, the Tana River burst its banks in Kenya. In almost every case, the forecast data existed — global models like GloFAS saw the water coming days in advance.
+
+The data existed. The warning never arrived.
+
+Highly technical meteorological data stays trapped in dashboards, in English, written for scientists. The family on the riverbank, the teacher deciding whether to close the school, the clinic worker moving medicine to higher ground — they never see it, or can't act on it.
+
+**Tayari** (Swahili for *Ready*) exists to close that gap between **information generated** and **information acted upon**. It doesn't just predict floods — it translates forecasts into plain-language, role-specific advisories in the languages people actually speak, and delivers them to the phones people actually carry.
+
+Tayari is **free to use** and open source, because an early warning should never be behind a paywall:
+
+- 🌐 **Web dashboard:** [tayari.pages.dev](https://tayari.pages.dev) — no signup, no cost
+- 📱 **Android app:** [GitHub Releases](https://github.com/Raul909/Tayari/releases) — offline-first, built for low-bandwidth areas
 
 ## ✨ What it does
 
-- 🔮 **Predicts** river flooding 1–7 days ahead using a LightGBM model and Open-Meteo's GloFAS data.
-- 🌍 **Overlays** impact data, automatically calculating the population and critical infrastructure (schools, clinics) within the projected flood zone.
-- 🗣️ **Translates** technical jargon into role-specific, multilingual advisories (Somali, Swahili, Amharic, Oromo, English) using AI.
-- 📱 **Delivers** alerts directly to mobile phones via the Africa's Talking SMS gateway, alongside a fast Next.js PWA dashboard for coordinators.
+- 🔮 **Predicts** river flooding 1–7 days ahead using a LightGBM model (with a calibrated heuristic fallback) on Open-Meteo's GloFAS river discharge and rainfall forecasts.
+- 🌍 **Overlays** impact data, estimating the population and critical infrastructure (schools, clinics, roads) at risk in each basin.
+- 🗣️ **Translates** technical jargon into role-specific advisories in **English, Somali, Swahili, Amharic, and Oromo** using an LLM — with pre-written template fallbacks so warnings go out even if the AI is down.
+- 📱 **Delivers** alerts via the Africa's Talking SMS gateway, a fast Next.js PWA dashboard for coordinators, and a Flutter mobile app for the field.
+- 📸 **Listens** — community members submit geotagged photo reports of ground conditions, closing the loop between forecast and reality.
 
 ---
 
@@ -26,38 +43,40 @@ Tayari is built on a decoupled, service-oriented architecture:
 ```mermaid
 graph TD
     subgraph Data Ingestion
-        A[Open-Meteo Flood API<br/>GloFAS River Discharge] -->|Scheduled Pull| B[FastAPI Backend]
-        A2[Open-Meteo Weather API<br/>Rainfall Forecasts] -->|Scheduled Pull| B
+        A[Open-Meteo Flood API<br/>GloFAS River Discharge] -->|Cloudflare Worker proxy| B[FastAPI Backend<br/>hosted on Render]
+        A2[Open-Meteo Weather API<br/>Rainfall Forecasts] -->|Cloudflare Worker proxy| B
     end
 
     subgraph ML Pipeline
-        B --> C[Flood Risk Model<br/>LightGBM]
-        C --> D[Risk Score<br/>0-100% per basin]
+        B --> C[Flood Risk Model<br/>LightGBM + calibrated heuristic fallback]
+        C --> D[Risk Score<br/>0-100% per basin, 7-day horizon]
     end
 
     subgraph Impact Analysis
         D --> E[Impact Engine]
-        F[WorldPop Population<br/>Pre-loaded GeoTIFF] --> E
-        G[OSM Infrastructure<br/>Schools/Clinics/Roads] --> E
+        F[Pre-computed WorldPop<br/>population estimates] --> E
+        G[OSM-derived Infrastructure<br/>Schools/Clinics/Roads] --> E
         E --> H[Impact Report<br/>People + Assets at Risk]
     end
 
     subgraph AI Advisory
-        H --> I[Claude API<br/>Advisory Generator]
-        I --> J[Multilingual Advisories<br/>Somali, Swahili, Amharic, Oromo]
+        H --> I[Groq API<br/>Llama 3.3 70B]
+        I --> J[Role-specific advisories<br/>English, Somali, Swahili, Amharic, Oromo]
+        I -.->|if API unavailable| T[Template Fallback<br/>English, Somali, Swahili]
     end
 
     subgraph Alert Delivery
-        J --> K[Next.js PWA<br/>MapLibre Dashboard]
+        J --> K[Next.js PWA Dashboard<br/>tayari.pages.dev]
         J --> L[Africa's Talking<br/>SMS Gateway]
-        J --> M[REST API<br/>Webhook/WhatsApp]
+        J --> M[Flutter Mobile App<br/>offline-first, APK on GitHub Releases]
     end
 
     subgraph Feedback Loop
-        N[Community Reports<br/>Geotagged Photos] --> B
-        L -->|SMS Reply| B
+        M -->|Geotagged Photo Reports| B
     end
 ```
+
+A small **Cloudflare Worker** does double duty: it proxies Open-Meteo requests (avoiding upstream rate limits) and pings the Render backend on a cron schedule so free-tier cold starts never delay a warning.
 
 ## 📍 Target Basins
 
@@ -82,10 +101,12 @@ Tayari monitors **eight** high-risk river basins across the IGAD region — chos
 
 ## 🚀 Getting Started
 
-If you want to spin this up locally, you'll need a couple of API keys. Don't worry, Open-Meteo is completely free and requires no auth!
+The easiest way to try Tayari is the live dashboard at **[tayari.pages.dev](https://tayari.pages.dev)** — it's free and requires no setup.
+
+If you want to spin it up locally, you'll need a couple of API keys. Don't worry — Open-Meteo is completely free and requires no auth!
 
 ### Prerequisites
-- **Anthropic API Key**: Used to generate the AI advisories.
+- **Groq API Key**: Used to generate the AI advisories (free at [console.groq.com](https://console.groq.com)). Without one, Tayari falls back to built-in advisory templates.
 - **Africa's Talking API Key**: Used for SMS delivery (a free sandbox account works perfectly).
 
 ### Running the Backend (FastAPI)
@@ -112,7 +133,7 @@ npm run dev
 Head over to `http://localhost:3000` and you should see the MapLibre dashboard lighting up with live basin data!
 
 ### Running the Mobile App (Flutter)
-The native mobile app is optimized for low-bandwidth environments in the IGAD region, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories.
+The native mobile app is optimized for low-bandwidth environments in the IGAD region, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories. Prefer not to build it yourself? Grab the APK from [GitHub Releases](https://github.com/Raul909/Tayari/releases).
 ```bash
 cd tayari_mobile
 flutter pub get
@@ -130,9 +151,10 @@ I chose tools that are fast, reliable, and perfectly suited for a machine-learni
 - **Frontend (Web):** Next.js 14 (App Router) & Vanilla CSS — *SSR for performance, PWA ready, and a custom glassmorphism design system.*
 - **Frontend (Mobile):** Flutter & Riverpod — *Native ARM performance, rendering vector maps instantly.*
 - **Databases:** Isar Database — *Ultra-fast offline-first NoSQL caching for the mobile app.*
-- **ML Model:** LightGBM — *Fast training on tabular data without needing a GPU.*
+- **ML Model:** LightGBM — *Fast training on tabular data without needing a GPU, backed by a calibrated heuristic so predictions never go dark.*
 - **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
-- **AI & Comms:** Groq API & Africa's Talking — *Best-in-class multilingual text generation and reliable East African SMS delivery.*
+- **AI & Comms:** Groq API (Llama 3.3 70B) & Africa's Talking — *Best-in-class multilingual text generation and reliable East African SMS delivery.*
+- **Hosting:** Cloudflare Pages (web, free at [tayari.pages.dev](https://tayari.pages.dev)), Render (API), and a Cloudflare Worker for proxying + keep-alive.
 
 ---
 
