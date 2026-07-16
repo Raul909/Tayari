@@ -826,7 +826,7 @@ tr:hover td { background: var(--surface-sunken); }
     font-size: 13px;
   }
 
-  .navbar-subtitle {
+  .navbar-subtitle, .feedback-text {
     display: none;
   }
 

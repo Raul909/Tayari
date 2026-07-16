@@ -30,6 +30,14 @@ export default function Navbar() {
             {link.label}
           </Link>
         ))}
+        <a 
+          href="mailto:contact@launchpixel.in?subject=Tayari Bug Report / Feedback" 
+          className="nav-link feedback-link"
+          title="Provide feedback or report a bug"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          💬 <span className="feedback-text">Feedback</span>
+        </a>
         <UserMenu />
       </div>
     </nav>

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import (
-    APIRouter, Depends, File, Form, HTTPException, Query, UploadFile,
+    APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,67 +87,107 @@ def _to_report_schema(row: ReportORM) -> CommunityReport:
 
 # ─── Alert Endpoints ─────────────────────────────────────────────────────────
 
-@router.post("/alerts/send", response_model=AlertResponse)
+@router.post("/alerts/send", response_model=AlertResponse, status_code=202)
 async def send_alert(
     request: AlertRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Send an SMS alert for a basin.
+    Send an SMS alert for a basin (Load Balanced).
 
-    Generates an AI advisory in the specified role and language,
-    then sends it via Africa's Talking SMS and records it to the database.
+    Checks the database to ensure we haven't already alerted this basin within
+    the last 12 hours (caching for safety to prevent SMS spam).
+    If clear, queues the heavy LLM and SMS network tasks to run in the background.
     """
     basin = _get_basin_config(request.basin_id)
+    
+    # 1. Caching / Safety Check: Has an alert been sent in the last 12 hours?
+    stmt = select(AlertORM).where(
+        AlertORM.basin_id == request.basin_id,
+        AlertORM.risk_level.in_(["HIGH", "EXTREME"]) # Only check for high risk/extreme floods
+    ).order_by(AlertORM.id.desc()).limit(1)
+    
+    recent_alert = (await session.scalars(stmt)).first()
+    if recent_alert:
+        # Check time difference
+        time_since = datetime.now(recent_alert.sent_at.tzinfo) - recent_alert.sent_at
+        if time_since.total_seconds() < 12 * 3600:
+            return AlertResponse(
+                success=True,
+                message="Alert skipped: An alert was already sent for this basin within the last 12 hours.",
+                sms_count=0
+            )
 
-    # Generate the advisory — fetch both data feeds concurrently
-    discharge_data, rainfall_data = await asyncio.gather(
-        fetch_river_discharge(
-            basin.gauge_point.latitude,
-            basin.gauge_point.longitude,
-            forecast_days=3,
-            past_days=7,
-        ),
-        fetch_upstream_rainfall(
-            basin.upstream_point.latitude,
-            basin.upstream_point.longitude,
-            forecast_days=3,
-            past_days=7,
-        ),
+    # 2. Queue Background Task
+    background_tasks.add_task(
+        _process_and_send_alert,
+        request=request,
+        basin=basin
+    )
+    
+    return AlertResponse(
+        success=True,
+        message="Alert processing queued successfully.",
+        sms_count=len(request.phone_numbers)
     )
 
-    risk = compute_flood_risk(basin, discharge_data, rainfall_data)
-    impact = compute_impact(request.basin_id, risk.risk_level)
+async def _process_and_send_alert(request: AlertRequest, basin):
+    """Background task to generate advisory and send SMS."""
+    # We need a new DB session since this runs in the background
+    from app.db import SessionLocal
+    
+    try:
+        # Generate the advisory — fetch both data feeds concurrently
+        discharge_data, rainfall_data = await asyncio.gather(
+            fetch_river_discharge(
+                basin.gauge_point.latitude,
+                basin.gauge_point.longitude,
+                forecast_days=3,
+                past_days=7,
+            ),
+            fetch_upstream_rainfall(
+                basin.upstream_point.latitude,
+                basin.upstream_point.longitude,
+                forecast_days=3,
+                past_days=7,
+            ),
+        )
 
-    advisory = await generate_advisory(
-        risk=risk,
-        impact=impact,
-        basin_name=basin.name,
-        river_name=basin.river,
-        country=basin.country,
-        role=request.role,
-        language=request.language,
-    )
+        risk = compute_flood_risk(basin, discharge_data, rainfall_data)
+        impact = compute_impact(request.basin_id, risk.risk_level)
 
-    # Format SMS text
-    sms_text = f"{advisory.title}\n\n{advisory.body}\n\n"
-    sms_text += "\n".join(f"• {a}" for a in advisory.actions[:3])  # Max 3 actions for SMS
+        advisory = await generate_advisory(
+            risk=risk,
+            impact=impact,
+            basin_name=basin.name,
+            river_name=basin.river,
+            country=basin.country,
+            role=request.role,
+            language=request.language,
+        )
 
-    # Send via Africa's Talking
-    result = await send_sms_alert(sms_text, request.phone_numbers)
+        # Format SMS text
+        sms_text = f"{advisory.title}\n\n{advisory.body}\n\n"
+        sms_text += "\n".join(f"• {a}" for a in advisory.actions[:3])  # Max 3 actions for SMS
 
-    # Record alert to the database
-    session.add(AlertORM(
-        basin_id=request.basin_id,
-        risk_level=risk.risk_level.value,
-        role=request.role.value,
-        language=request.language.value,
-        recipients_count=len(request.phone_numbers),
-        advisory_text=sms_text,
-    ))
-    await session.commit()
+        # Send via Africa's Talking
+        await send_sms_alert(sms_text, request.phone_numbers)
 
-    return result
+        # Record alert to the database
+        async with SessionLocal() as session:
+            session.add(AlertORM(
+                basin_id=request.basin_id,
+                risk_level=risk.risk_level.value,
+                role=request.role.value,
+                language=request.language.value,
+                recipients_count=len(request.phone_numbers),
+                advisory_text=sms_text,
+            ))
+            await session.commit()
+            
+    except Exception as e:
+        logger.error(f"Failed to process background alert for {basin.id}: {e}")
 
 
 @router.get("/alerts/history", response_model=list[AlertRecord])
