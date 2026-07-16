@@ -33,11 +33,16 @@ jobs:
         working-directory: ./tayari_mobile
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build split (per-ABI) APKs
         working-directory: ./tayari_mobile
-        run: flutter build apk --release
+        # One APK per CPU architecture instead of a single ~85 MB universal APK.
+        # Each is ~half the size, so users on slow connections download only the
+        # native code their phone actually runs. Obfuscation strips symbols for a
+        # smaller, harder-to-reverse binary; debug symbols are kept for
+        # crash symbolication.
+        run: flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
 
-      - name: Create Release and Upload APK
+      - name: Create Release and Upload APKs
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -47,11 +52,20 @@ jobs:
           body: |
             **Tayari — AI Flood Early Warning & Early Action System**
 
-            Download `app-release.apk` below and install on Android
-            (enable "Install from unknown sources" if prompted).
+            ### Which file do I download?
+            - **`app-arm64-v8a-release.apk`** — pick this on almost any phone from
+              ~2019 onward. **← recommended, start here.**
+            - `app-armeabi-v7a-release.apk` — only for older / low-cost 32-bit devices
+              (use this if the arm64 file says "App not installed").
+
+            Each file is ~half the size of a universal APK, so it downloads much
+            faster on slow connections. Enable "Install from unknown sources" if
+            prompted.
 
             ---
             Changes in this release:
-          files: tayari_mobile/build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            tayari_mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            tayari_mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
