@@ -53,6 +53,96 @@
       "warning_threshold_m3s": 600,
       "historical_median_m3s": 200,
       "description": "Kenya's longest river, the Tana, floods at Garsen near its delta. The lower Tana basin is home to vulnerable pastoral and farming communities. Major floods occurred in April-May 2024."
+    },
+    {
+      "id": "nzoia",
+      "name": "Nzoia Basin (Budalangi)",
+      "river": "Nzoia River",
+      "country": "Kenya",
+      "gauge_point": {
+        "latitude": 0.10,
+        "longitude": 34.05
+      },
+      "upstream_point": {
+        "latitude": 0.61,
+        "longitude": 34.77
+      },
+      "flood_threshold_m3s": 300,
+      "warning_threshold_m3s": 220,
+      "historical_median_m3s": 90,
+      "description": "The Nzoia River bursts its banks at Budalangi (Bunyala) in the Lake Victoria basin almost every rainy season, making it one of Kenya's most chronically flooded areas. It drains the Cherangani Hills and Mt Elgon and floods heavily during the long (MAM) and short (OND) rains."
+    },
+    {
+      "id": "awash",
+      "name": "Awash Basin (Dubti)",
+      "river": "Awash River",
+      "country": "Ethiopia",
+      "gauge_point": {
+        "latitude": 11.73,
+        "longitude": 41.08
+      },
+      "upstream_point": {
+        "latitude": 8.90,
+        "longitude": 39.10
+      },
+      "flood_threshold_m3s": 500,
+      "warning_threshold_m3s": 380,
+      "historical_median_m3s": 120,
+      "description": "The lower Awash floods across the Afar lowlands around Dubti and Asaita, fed by rains over the central Ethiopian highlands near Koka. Overflow displaced tens of thousands of Afar pastoralists in 2020, 2023 and 2024."
+    },
+    {
+      "id": "white_nile",
+      "name": "White Nile Basin (Bor)",
+      "river": "White Nile",
+      "country": "South Sudan",
+      "gauge_point": {
+        "latitude": 6.21,
+        "longitude": 31.56
+      },
+      "upstream_point": {
+        "latitude": 5.20,
+        "longitude": 31.77
+      },
+      "flood_threshold_m3s": 1300,
+      "warning_threshold_m3s": 1050,
+      "historical_median_m3s": 800,
+      "description": "Around Bor and the Sudd in Jonglei, sustained high White Nile flows driven by Lake Victoria outflow produced catastrophic multi-year flooding from 2020-2022, affecting over a million people across South Sudan."
+    },
+    {
+      "id": "blue_nile",
+      "name": "Blue Nile Basin (Khartoum)",
+      "river": "Blue Nile",
+      "country": "Sudan",
+      "gauge_point": {
+        "latitude": 15.55,
+        "longitude": 32.53
+      },
+      "upstream_point": {
+        "latitude": 12.00,
+        "longitude": 37.25
+      },
+      "flood_threshold_m3s": 5500,
+      "warning_threshold_m3s": 4000,
+      "historical_median_m3s": 1400,
+      "description": "The Blue Nile carries Ethiopian highland (Lake Tana) rains into Sudan, cresting at Khartoum in the July-September flood season. Record 2020 levels inundated riverside districts and affected roughly 875,000 people nationwide."
+    },
+    {
+      "id": "omo",
+      "name": "Omo Basin (Omorate)",
+      "river": "Omo River",
+      "country": "Ethiopia",
+      "gauge_point": {
+        "latitude": 4.80,
+        "longitude": 35.96
+      },
+      "upstream_point": {
+        "latitude": 7.00,
+        "longitude": 37.30
+      },
+      "flood_threshold_m3s": 900,
+      "warning_threshold_m3s": 700,
+      "historical_median_m3s": 250,
+      "description": "The lower Omo floods the South Omo Zone around Omorate before draining into Lake Turkana. Seasonal overbank flooding repeatedly displaces Dassanech and Nyangatom agro-pastoralist communities, notably in 2019 and 2023."
     }
   ],
   "impact_data": {
@@ -133,6 +223,136 @@
         "markets": 9,
         "flood_zone_km": 10
       }
+    },
+    "nzoia": {
+      "MODERATE": {
+        "population_at_risk": 10000,
+        "schools": 3,
+        "clinics": 1,
+        "hospitals": 0,
+        "markets": 1,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 30000,
+        "schools": 6,
+        "clinics": 2,
+        "hospitals": 1,
+        "markets": 3,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 80000,
+        "schools": 11,
+        "clinics": 4,
+        "hospitals": 1,
+        "markets": 6,
+        "flood_zone_km": 9
+      }
+    },
+    "awash": {
+      "MODERATE": {
+        "population_at_risk": 8000,
+        "schools": 2,
+        "clinics": 1,
+        "hospitals": 0,
+        "markets": 1,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 24000,
+        "schools": 4,
+        "clinics": 2,
+        "hospitals": 0,
+        "markets": 2,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 70000,
+        "schools": 7,
+        "clinics": 3,
+        "hospitals": 1,
+        "markets": 4,
+        "flood_zone_km": 10
+      }
+    },
+    "white_nile": {
+      "MODERATE": {
+        "population_at_risk": 20000,
+        "schools": 4,
+        "clinics": 2,
+        "hospitals": 0,
+        "markets": 2,
+        "flood_zone_km": 3
+      },
+      "HIGH": {
+        "population_at_risk": 60000,
+        "schools": 8,
+        "clinics": 3,
+        "hospitals": 1,
+        "markets": 4,
+        "flood_zone_km": 8
+      },
+      "EXTREME": {
+        "population_at_risk": 180000,
+        "schools": 16,
+        "clinics": 6,
+        "hospitals": 2,
+        "markets": 8,
+        "flood_zone_km": 15
+      }
+    },
+    "blue_nile": {
+      "MODERATE": {
+        "population_at_risk": 25000,
+        "schools": 5,
+        "clinics": 2,
+        "hospitals": 1,
+        "markets": 3,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 90000,
+        "schools": 10,
+        "clinics": 4,
+        "hospitals": 2,
+        "markets": 6,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 250000,
+        "schools": 20,
+        "clinics": 8,
+        "hospitals": 3,
+        "markets": 12,
+        "flood_zone_km": 8
+      }
+    },
+    "omo": {
+      "MODERATE": {
+        "population_at_risk": 6000,
+        "schools": 2,
+        "clinics": 1,
+        "hospitals": 0,
+        "markets": 1,
+        "flood_zone_km": 2
+      },
+      "HIGH": {
+        "population_at_risk": 18000,
+        "schools": 4,
+        "clinics": 2,
+        "hospitals": 0,
+        "markets": 2,
+        "flood_zone_km": 5
+      },
+      "EXTREME": {
+        "population_at_risk": 50000,
+        "schools": 7,
+        "clinics": 3,
+        "hospitals": 1,
+        "markets": 4,
+        "flood_zone_km": 10
+      }
     }
   },
   "infrastructure": {
@@ -176,6 +396,54 @@
       {"name": "Bangale Primary School", "type": "school", "latitude": -2.2950, "longitude": 40.0950},
       {"name": "Nanighi Health Centre", "type": "clinic", "latitude": -2.2550, "longitude": 40.1280},
       {"name": "Sera Clinic", "type": "clinic", "latitude": -2.3000, "longitude": 40.0900}
+    ],
+    "nzoia": [
+      {"name": "Bunyala Sub-County Hospital", "type": "hospital", "latitude": 0.1100, "longitude": 34.0400},
+      {"name": "Budalangi Health Centre", "type": "clinic", "latitude": 0.1050, "longitude": 34.0500},
+      {"name": "Budalangi Primary School", "type": "school", "latitude": 0.1020, "longitude": 34.0550},
+      {"name": "Mundere Market", "type": "market", "latitude": 0.1000, "longitude": 34.0600},
+      {"name": "Rukala Primary School", "type": "school", "latitude": 0.0950, "longitude": 34.0450},
+      {"name": "Magombe Health Post", "type": "clinic", "latitude": 0.1150, "longitude": 34.0350},
+      {"name": "Sisenye School", "type": "school", "latitude": 0.0900, "longitude": 34.0500},
+      {"name": "Bulemia Market", "type": "market", "latitude": 0.1080, "longitude": 34.0480}
+    ],
+    "awash": [
+      {"name": "Dubti Referral Hospital", "type": "hospital", "latitude": 11.7350, "longitude": 41.0800},
+      {"name": "Dubti Health Centre", "type": "clinic", "latitude": 11.7280, "longitude": 41.0750},
+      {"name": "Dubti Primary School", "type": "school", "latitude": 11.7300, "longitude": 41.0850},
+      {"name": "Logiya Market", "type": "market", "latitude": 11.7400, "longitude": 41.0700},
+      {"name": "Dubti Secondary School", "type": "school", "latitude": 11.7250, "longitude": 41.0900},
+      {"name": "Gel'alo Health Post", "type": "clinic", "latitude": 11.7450, "longitude": 41.0650},
+      {"name": "Dubti Estate School", "type": "school", "latitude": 11.7200, "longitude": 41.0950},
+      {"name": "Central Market Dubti", "type": "market", "latitude": 11.7330, "longitude": 41.0780}
+    ],
+    "white_nile": [
+      {"name": "Bor State Hospital", "type": "hospital", "latitude": 6.2100, "longitude": 31.5600},
+      {"name": "Malek Health Centre", "type": "clinic", "latitude": 6.2000, "longitude": 31.5550},
+      {"name": "Bor Town Primary School", "type": "school", "latitude": 6.2050, "longitude": 31.5650},
+      {"name": "Bor Freedom Market", "type": "market", "latitude": 6.2150, "longitude": 31.5620},
+      {"name": "Marol Academy", "type": "school", "latitude": 6.2200, "longitude": 31.5700},
+      {"name": "Langbar Health Post", "type": "clinic", "latitude": 6.1950, "longitude": 31.5500},
+      {"name": "Bor Secondary School", "type": "school", "latitude": 6.2250, "longitude": 31.5680},
+      {"name": "Anyidi Market", "type": "market", "latitude": 6.2300, "longitude": 31.5750}
+    ],
+    "blue_nile": [
+      {"name": "Khartoum Teaching Hospital", "type": "hospital", "latitude": 15.5500, "longitude": 32.5350},
+      {"name": "Khartoum North Hospital", "type": "hospital", "latitude": 15.6350, "longitude": 32.5400},
+      {"name": "Blue Nile Health Centre", "type": "clinic", "latitude": 15.5550, "longitude": 32.5300},
+      {"name": "Al Mek Nimir School", "type": "school", "latitude": 15.5450, "longitude": 32.5400},
+      {"name": "Bahri Central Market", "type": "market", "latitude": 15.6300, "longitude": 32.5450},
+      {"name": "Al Kalakla Basic School", "type": "school", "latitude": 15.5400, "longitude": 32.5250},
+      {"name": "Riverside Clinic", "type": "clinic", "latitude": 15.5600, "longitude": 32.5380},
+      {"name": "Souq Al Arabi Market", "type": "market", "latitude": 15.5900, "longitude": 32.5350}
+    ],
+    "omo": [
+      {"name": "Omorate Health Centre", "type": "clinic", "latitude": 4.8020, "longitude": 35.9600},
+      {"name": "Omorate Primary School", "type": "school", "latitude": 4.8000, "longitude": 35.9650},
+      {"name": "Dassanech Woreda Clinic", "type": "clinic", "latitude": 4.7950, "longitude": 35.9550},
+      {"name": "Omorate Market", "type": "market", "latitude": 4.8050, "longitude": 35.9620},
+      {"name": "Omorate Secondary School", "type": "school", "latitude": 4.8080, "longitude": 35.9680},
+      {"name": "Lower Omo Health Post", "type": "clinic", "latitude": 4.7900, "longitude": 35.9500}
     ]
   }
 }

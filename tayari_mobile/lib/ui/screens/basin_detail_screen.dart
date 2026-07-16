@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../models/basin.dart';
 import '../../models/forecast.dart';
+import '../../models/user_prefs.dart';
 import '../../providers/basin_provider.dart';
 import '../../providers/db_provider.dart';
+import '../../providers/prefs_provider.dart';
 import '../theme.dart';
 import 'report_screen.dart';
 
@@ -17,13 +19,18 @@ class BasinDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
-  String selectedLanguage = 'en';
-  String selectedRole = 'farmer';
+  late String selectedLanguage;
+  late String selectedRole;
   bool _syncing = false;
 
   @override
   void initState() {
     super.initState();
+    // Open straight into the owner's saved audience + language so the advisory
+    // is already tailored to them without any extra taps.
+    final prefs = ref.read(userPrefsProvider);
+    selectedRole = prefs.role;
+    selectedLanguage = prefs.language;
     // Kick off a forecast fetch as soon as the screen opens. Without this the
     // forecast/advisory would never be requested and the screen would hang on
     // "loading" forever.
@@ -176,13 +183,15 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
         labelText: 'Audience',
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
-      items: const [
-        DropdownMenuItem(value: 'farmer', child: Text('Farmers')),
-        DropdownMenuItem(value: 'county_officer', child: Text('County officers')),
+      items: [
+        for (final r in kRoleOptions)
+          DropdownMenuItem(value: r.value, child: Text(r.label)),
       ],
       onChanged: (val) {
         if (val == null) return;
         setState(() => selectedRole = val);
+        // Remember this as the owner's choice for next time.
+        ref.read(userPrefsProvider.notifier).setRole(val);
         _syncForecast();
       },
     );
@@ -196,16 +205,15 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
         labelText: 'Language',
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
-      items: const [
-        DropdownMenuItem(value: 'en', child: Text('English')),
-        DropdownMenuItem(value: 'sw', child: Text('Swahili')),
-        DropdownMenuItem(value: 'so', child: Text('Somali')),
-        DropdownMenuItem(value: 'am', child: Text('Amharic')),
-        DropdownMenuItem(value: 'om', child: Text('Oromo')),
+      items: [
+        for (final l in kLanguageOptions)
+          DropdownMenuItem(value: l.value, child: Text(l.label)),
       ],
       onChanged: (val) {
         if (val == null) return;
         setState(() => selectedLanguage = val);
+        // Remember this as the owner's choice for next time.
+        ref.read(userPrefsProvider.notifier).setLanguage(val);
         _syncForecast();
       },
     );
@@ -248,6 +256,7 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
                 '${(prob * 100).toStringAsFixed(0)}%',
                 style: TextStyle(
                   color: riskColor,
+                  fontFamily: AppFonts.mono,
                   fontSize: 30,
                   fontWeight: FontWeight.w700,
                 ),
@@ -365,7 +374,11 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
           Icon(icon, size: 26, color: AppColors.textSecondary),
           const SizedBox(height: 8),
           Text(value,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              style: const TextStyle(
+                fontFamily: AppFonts.mono,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              )),
           Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
         ],
       ),

@@ -61,13 +61,20 @@ graph TD
 
 ## 📍 Target Basins
 
-For this hackathon, I've focused deeply on three high-risk river basins in the IGAD region:
+Tayari monitors **eight** high-risk river basins across the IGAD region — chosen because each has a documented history of destructive flooding and vulnerable riverside communities:
 
-| Basin | River | Country | Gauge Coordinates | Historical Context |
-|-------|-------|---------|----------------------|-----------------|
+| Basin | River | Country | Gauge (Town) | Historical Context |
+|-------|-------|---------|--------------|--------------------|
 | **Shabelle** | Shabelle River | Somalia | 4.74°N, 45.20°E *(Beledweyne)* | Nov 2023 — 500K displaced |
-| **Juba** | Juba River | Somalia | 0.35°N, 42.54°E *(Luuq)* | Nov 2023 |
-| **Tana** | Tana River | Kenya | -1.80°S, 40.02°E *(Garsen)* | Apr-May 2024 |
+| **Juba** | Juba River | Somalia | 3.80°N, 42.54°E *(Luuq)* | Deyr/Gu seasonal floods |
+| **Tana** | Tana River | Kenya | 2.27°S, 40.12°E *(Garsen)* | Apr–May 2024 |
+| **Nzoia** | Nzoia River | Kenya | 0.10°N, 34.05°E *(Budalangi)* | Near-annual Lake Victoria basin floods |
+| **Awash** | Awash River | Ethiopia | 11.73°N, 41.08°E *(Dubti)* | Afar floods 2020, 2023, 2024 |
+| **White Nile** | White Nile | South Sudan | 6.21°N, 31.56°E *(Bor)* | 2020–2022 — 1M+ affected |
+| **Blue Nile** | Blue Nile | Sudan | 15.55°N, 32.53°E *(Khartoum)* | Record 2020 floods — ~875K affected |
+| **Omo** | Omo River | Ethiopia | 4.80°N, 35.96°E *(Omorate)* | South Omo floods 2019, 2023 |
+
+*Adding a basin is a pure data change (`backend/app/data/basins.json`) — gauge/upstream points, discharge thresholds, impact figures and local infrastructure — so the coverage grid extends to new rivers without touching the model or UI.*
 
 *Note: While the current implementation focuses solely on floods to ensure depth and quality, the architecture is designed to be easily extensible for other regional hazards like drought and locust swarms.*
 

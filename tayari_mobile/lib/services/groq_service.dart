@@ -84,9 +84,13 @@ TARGET AUDIENCE:
 - Write in $langName
 
 INSTRUCTIONS:
-1. Write a short, urgent TITLE (max 10 words)
-2. Write a BODY paragraph (3-5 sentences) in simple, clear language
-3. List 3-5 specific ACTIONS the person should take
+1. Write a short TITLE (max 10 words). Match the tone to the risk level:
+   LOW = calm reassurance, MODERATE = watchful, HIGH/EXTREME = urgent.
+2. Write a BODY paragraph (3-5 sentences) in simple, clear language — no jargon,
+   no panic. Reference the ${(probability * 100).toStringAsFixed(0)}% probability and be specific about timing.
+   For LOW risk, reassure and give light preparedness steps — do NOT tell people to evacuate.
+3. List 3-5 concrete ACTIONS the person can actually do, tailored to their role,
+   ordered by what to do first. Keep each action to one short sentence.
 
 Format your response EXACTLY as:
 TITLE: [title]

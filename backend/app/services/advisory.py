@@ -133,12 +133,17 @@ TARGET AUDIENCE:
 - Write in {LANGUAGE_NAMES[language]}
 
 INSTRUCTIONS:
-1. Write a short, urgent TITLE (max 10 words)
+1. Write a short TITLE (max 10 words). Match the tone to the risk level:
+   LOW = calm reassurance, MODERATE = watchful, HIGH/EXTREME = urgent.
 2. Write a BODY paragraph (3-5 sentences) that is:
-   - In simple, clear language a non-expert can understand
-   - Specific about timing ("by Thursday", "within 2 days")
+   - In simple, clear language a non-expert can understand — no jargon, no panic
+   - Grounded in the numbers: reference the {risk.probability * 100:.0f}% probability and,
+     if given, the day the flood threshold may be crossed
+   - Specific about timing ("within 2 days", "before the weekend")
    - Specific about what to do (not just "be prepared")
-3. List 3-5 specific ACTIONS the person should take, tailored to their role
+   - For LOW risk, reassure and give light preparedness steps — do NOT tell people to evacuate
+3. List 3-5 concrete ACTIONS the person can actually do, tailored to their role and location.
+   Order them by what to do first. Keep each action to one short sentence.
 
 Format your response EXACTLY as:
 TITLE: [title]
@@ -256,6 +261,52 @@ def _generate_template_advisory(
                 "Weka nyaraka muhimu kwenye mfuko usioweza kupenyeza maji",
             ],
         },
+        UserRole.PASTORALIST: {
+            Language.ENGLISH: [
+                f"Move your herds now to known high-ground grazing away from the {river_name}",
+                f"Do not cross the {river_name} or flooded crossings with livestock",
+                "Water and rest animals early, and keep the herd together as water rises",
+                "Store fodder and veterinary supplies on raised ground",
+                "Pass the warning to other herders sharing your grazing route",
+            ],
+            Language.SOMALI: [
+                f"Hadda xoolahaaga u guuri daaqsin dhul sare oo ka fog {river_name}",
+                f"Ha kula gudbin xoolaha {river_name} ama meelaha daadku qabtay",
+                "Waraabi oo nasi xoolaha goor hore, xeradana isku hay marka biyuhu kordhayaan",
+                "Kaydi cunto xoolaad iyo daawooyin xoolaad meel sarreysa",
+                "U gudbi digniinta xoolo-dhaqatada kale ee daaqa kula wadaaga",
+            ],
+            Language.SWAHILI: [
+                f"Hamisha mifugo yako sasa kwenye malisho ya ardhi ya juu mbali na {river_name}",
+                f"Usivuke {river_name} au vivuko vilivyofurika ukiwa na mifugo",
+                "Nywesha na pumzisha wanyama mapema, na weka kundi pamoja maji yanapopanda",
+                "Hifadhi malisho na dawa za mifugo kwenye sehemu iliyoinuka",
+                "Peleka onyo kwa wafugaji wengine mnaoshiriki njia ya malisho",
+            ],
+        },
+        UserRole.COMMUNITY_LEADER: {
+            Language.ENGLISH: [
+                f"Alert every household near the {river_name}, starting with elderly, disabled and pregnant residents",
+                "Agree an assembly point on high ground and the safest route to reach it",
+                "Identify who has boats, vehicles or radios and put them on standby",
+                "Relay the warning through mosque/church announcements and local FM radio",
+                "Keep a simple list of who has moved and who still needs help",
+            ],
+            Language.SOMALI: [
+                f"Ogeysii qoys kasta oo u dhow {river_name}, laga bilaabo waayeelka, naafada iyo dumarka uurka leh",
+                "Ku heshiiya meel lagu kulmo oo dhul sare ah iyo jidka ugu ammaan badan ee loo maro",
+                "Ogow cida haysata doonyo, gawaari ama raadiyayaal, oo diyaar u ah",
+                "Ku gudbi digniinta dhawaaqa masaajidka/kaniisadda iyo raadiyaha FM-ka degaanka",
+                "Hayso liis fudud oo ah cida guurtay iyo cida weli caawimaad u baahan",
+            ],
+            Language.SWAHILI: [
+                f"Arifu kila kaya iliyo karibu na {river_name}, ukianza na wazee, walemavu na wajawazito",
+                "Kubalianeni sehemu ya kukusanyika kwenye ardhi ya juu na njia salama ya kufika",
+                "Tambua wenye mashua, magari au redio na uwaweke tayari",
+                "Peleka onyo kupitia matangazo ya msikiti/kanisa na redio za FM za eneo",
+                "Weka orodha rahisi ya waliohama na wanaohitaji msaada",
+            ],
+        },
         UserRole.COUNTY_OFFICER: {
             Language.ENGLISH: [
                 f"Activate the county emergency operations center",
@@ -304,17 +355,10 @@ def _generate_template_advisory(
         },
     }
 
-    # Get actions for the role, fall back to GENERAL if role not in templates
+    # Get actions for the role, falling back to GENERAL if the role has no
+    # template, then to English if the language has no translation.
     actions_dict = role_actions.get(role, role_actions[UserRole.GENERAL])
     actions = actions_dict.get(language, actions_dict.get(Language.ENGLISH, []))
-
-    # Add community leader and pastoralist as variants of general
-    if role == UserRole.COMMUNITY_LEADER:
-        actions = actions_dict.get(language, actions_dict.get(Language.ENGLISH, []))
-    if role == UserRole.PASTORALIST:
-        actions = role_actions.get(UserRole.FARMER, role_actions[UserRole.GENERAL]).get(
-            language, role_actions[UserRole.FARMER].get(Language.ENGLISH, [])
-        )
 
     # Build title and body
     titles = {

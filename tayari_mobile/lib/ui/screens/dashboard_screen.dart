@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import '../../providers/basin_provider.dart';
 import '../../providers/db_provider.dart';
+import '../../providers/prefs_provider.dart';
 import '../theme.dart';
 import 'basin_detail_screen.dart';
+import 'settings_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -45,6 +47,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final basinsAsyncValue = ref.watch(basinsStreamProvider);
+    final homeBasinId = ref.watch(userPrefsProvider).homeBasinId;
 
     return Scaffold(
       appBar: AppBar(
@@ -60,6 +63,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 : const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _syncing ? null : _manualSync,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'My settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
           ),
         ],
       ),
@@ -119,19 +132,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ),
                           );
                         }
+                        // Pin the owner's home basin to the top; the rest keep
+                        // their order.
+                        final ordered = [
+                          ...basins.where((b) => b.basinId == homeBasinId),
+                          ...basins.where((b) => b.basinId != homeBasinId),
+                        ];
                         return ListView.separated(
                           shrinkWrap: true,
                           padding: const EdgeInsets.only(bottom: 8),
-                          itemCount: basins.length,
+                          itemCount: ordered.length,
                           separatorBuilder: (_, _) =>
                               const Divider(height: 1, color: AppColors.border),
                           itemBuilder: (context, index) {
-                            final basin = basins[index];
+                            final basin = ordered[index];
                             return _BasinTile(
                               name: basin.name,
                               country: basin.country,
                               risk: basin.currentRisk,
                               probability: basin.floodProbability,
+                              isHome: basin.basinId == homeBasinId,
                               onTap: () {
                                 mapController?.animateCamera(
                                   CameraUpdate.newLatLngZoom(
@@ -178,6 +198,7 @@ class _BasinTile extends StatelessWidget {
   final String country;
   final String risk;
   final double? probability;
+  final bool isHome;
   final VoidCallback onTap;
 
   const _BasinTile({
@@ -186,6 +207,7 @@ class _BasinTile extends StatelessWidget {
     required this.risk,
     required this.probability,
     required this.onTap,
+    this.isHome = false,
   });
 
   @override
@@ -210,12 +232,27 @@ class _BasinTile extends StatelessWidget {
           pct,
           style: TextStyle(
             color: color,
+            fontFamily: AppFonts.mono,
             fontWeight: FontWeight.w600,
             fontSize: 12,
           ),
         ),
       ),
-      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              name,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+          ),
+          if (isHome) ...[
+            const SizedBox(width: 8),
+            const _HomeChip(),
+          ],
+        ],
+      ),
       subtitle: Text(
         '$country · ${_titleCase(risk)} risk',
         style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
@@ -227,4 +264,28 @@ class _BasinTile extends StatelessWidget {
 
   String _titleCase(String s) =>
       s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+}
+
+class _HomeChip extends StatelessWidget {
+  const _HomeChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'HOME',
+        style: TextStyle(
+          color: AppColors.accent,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
 }

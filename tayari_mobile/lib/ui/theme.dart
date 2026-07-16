@@ -37,6 +37,15 @@ class AppColors {
   }
 }
 
+/// Font families. We use the platform's built-in serif and monospace faces
+/// (no bundled assets — keeps the APK small and quick to render on low-end
+/// devices) to echo the web dashboard: a serif brand/headline, monospaced
+/// figures.
+class AppFonts {
+  static const serif = 'serif';
+  static const mono = 'monospace';
+}
+
 ThemeData buildTayariTheme() {
   final base = ThemeData(
     useMaterial3: true,
@@ -59,6 +68,7 @@ ThemeData buildTayariTheme() {
       centerTitle: false,
       titleTextStyle: TextStyle(
         color: AppColors.textPrimary,
+        fontFamily: AppFonts.serif,
         fontSize: 20,
         fontWeight: FontWeight.w600,
       ),
