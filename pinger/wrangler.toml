@@ -2,7 +2,11 @@ name = "tayari-pinger"
 main = "src/index.js"
 compatibility_date = "2024-07-15"
 
-# Ping Render every 5 minutes to prevent the free tier from sleeping
-# (Render sleeps after 15 minutes of inactivity — 5min gives comfortable margin)
+# Keep the Render free tier warm. Render spins down after 15 min idle, so we
+# ping every 14 min (the efficient sweet spot — always under the 15-min window,
+# no benefit to going faster) and only during 03:00-21:59 UTC (06:00-24:00 EAT).
+# Letting it sleep overnight keeps monthly usage (~570h) comfortably under the
+# 750 instance-hour/month free cap, at the cost of a ~20s cold start on the
+# first request each morning.
 [triggers]
 crons = ["*/14 3-21 * * *"]
