@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 
 export default function AuthModal({ onClose }) {
@@ -9,7 +9,13 @@ export default function AuthModal({ onClose }) {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
+  const { login, register, prefetch } = useAuth();
+
+  // Warm the (lazily-loaded) Supabase SDK while the user is still typing, so
+  // submitting doesn't wait on a cold import.
+  useEffect(() => {
+    prefetch?.();
+  }, [prefetch]);
 
   async function handleSubmit(e) {
     e.preventDefault();

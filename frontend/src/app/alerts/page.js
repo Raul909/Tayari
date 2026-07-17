@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { sendAlert, fetchAlertHistory, fetchAdvisory, fetchBasins, resolveAssetUrl } from '@/lib/api';
 import { ROLES, LANGUAGES, LANGUAGE_LABELS } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
-import { supabase } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase';
 
 export default function AlertsPage() {
   const [session, setSession] = useState(null);
@@ -37,21 +37,29 @@ export default function AlertsPage() {
   const { notify } = useToast();
 
   useEffect(() => {
-    // Check Supabase session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    // Restore the operator session; the Supabase SDK loads on demand.
+    let active = true;
+    let unsub = () => {};
+    getSupabase().then((supabase) => {
+      if (!active) return;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (active) setSession(session);
+      });
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session);
+      });
+      unsub = () => subscription.unsubscribe();
     });
 
     loadBasins();
     loadHistory();
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -100,6 +108,7 @@ export default function AlertsPage() {
   // Supabase Phone Auth
   async function handleSendOtp() {
     setAuthLoading(true);
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.signInWithOtp({
       phone: loginPhone,
     });
@@ -114,6 +123,7 @@ export default function AlertsPage() {
 
   async function handleVerifyOtp() {
     setAuthLoading(true);
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.verifyOtp({
       phone: loginPhone,
       token: loginOtp,
@@ -246,7 +256,7 @@ export default function AlertsPage() {
           <h1 className="page-title">Alerts</h1>
           <p className="page-description">Generate and send multilingual flood advisories via Cloudflare SMS Workers.</p>
         </div>
-        <button className="btn" onClick={() => supabase.auth.signOut()}>Logout</button>
+        <button className="btn" onClick={async () => (await getSupabase()).auth.signOut()}>Logout</button>
       </div>
 
       <div className="grid-2col">
