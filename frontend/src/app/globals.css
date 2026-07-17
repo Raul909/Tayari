@@ -667,11 +667,18 @@ a { color: inherit; }
 
 /* Two-column content layout used by the Report/Alerts pages. A real class
    instead of matching inline styles — React serializes inline styles without a
-   space after the colon, which silently broke the old attribute selector. */
+   space after the colon, which silently broke the old attribute selector.
+
+   auto-fit + minmax makes the collapse intrinsic: two columns only while each
+   can be at least ~360px wide, otherwise it drops to a single column on its
+   own. That holds at every width (phones, tablets, split-screen) without
+   depending solely on the 768px breakpoint below. The min(100%, 360px) guard
+   stops the track from overflowing a viewport narrower than 360px. */
 .grid-2col {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   gap: 20px;
+  align-items: start;
 }
 
 .page-header {
