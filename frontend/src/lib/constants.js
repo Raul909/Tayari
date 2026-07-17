@@ -79,6 +79,11 @@ export const BASINS = {
 
 export const MAP_CENTER = { lat: 2.0, lng: 42.0, zoom: 5 };
 
+// Basemap style. A light "positron" raster/vector style keeps the risk markers
+// legible and the tiles cheap to download. Shared by the dashboard map and the
+// idle warm-up preloader so we only reference one URL.
+export const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+
 export const RISK_COLORS = {
   LOW: '#3F7D53',
   MODERATE: '#B0812C',

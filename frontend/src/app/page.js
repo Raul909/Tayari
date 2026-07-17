@@ -1,25 +1,50 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import maplibregl from 'maplibre-gl';
+import dynamic from 'next/dynamic';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { fetchBasins, fetchForecast, fetchReports, resolveAssetUrl } from '@/lib/api';
-import { RISK_COLORS, MAP_CENTER, ROLES, LANGUAGE_LABELS, REPORT_STATUSES } from '@/lib/constants';
+import {
+  RISK_COLORS,
+  MAP_CENTER,
+  MAP_STYLE_URL,
+  ROLES,
+  LANGUAGE_LABELS,
+  REPORT_STATUSES,
+} from '@/lib/constants';
+import { getDeviceTier, mapOptionsForTier, loadMapLibrary, onIdle, TIERS } from '@/lib/perf';
 import { useToast } from '@/components/Toast';
 import RiskGauge from '@/components/RiskGauge';
-import ForecastChart from '@/components/ForecastChart';
 import AdvisoryCard from '@/components/AdvisoryCard';
 import ImpactPanel from '@/components/ImpactPanel';
 import OnboardingSplash from '@/components/OnboardingSplash';
 import { useAuth } from '@/lib/auth';
 
+// chart.js (~150 KB) only appears once a basin is selected, so split it out of
+// the initial dashboard bundle instead of shipping it to every first paint.
+const ForecastChart = dynamic(() => import('@/components/ForecastChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="loading-container" style={{ padding: '24px' }}>
+      <div className="spinner" />
+    </div>
+  ),
+});
+
 export default function Dashboard() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
+  // The lazily-imported maplibre-gl namespace, kept so the marker effects can
+  // construct Markers/Popups without importing the (heavy) module themselves.
+  const maplibreRef = useRef(null);
   const markersRef = useRef([]);
   const reportMarkersRef = useRef([]);
   const resizeObserverRef = useRef(null);
   // Monotonic token so a slow forecast response can't overwrite a newer one.
   const forecastReqId = useRef(0);
+  // Guards so the (async) map init runs exactly once even if several triggers fire.
+  const mapInitStartedRef = useRef(false);
+  const mapTierRef = useRef(TIERS.HIGH);
 
   const [basins, setBasins] = useState([]);
   const [reports, setReports] = useState([]);
@@ -30,6 +55,11 @@ export default function Dashboard() {
   const [role, setRole] = useState('general');
   const [language, setLanguage] = useState('en');
   const [error, setError] = useState(null);
+  // Map lifecycle: `mapReady` flips true once the style has loaded (markers wait
+  // for it); `deferMap` means we're on a metered/low device and are waiting for
+  // the user to tap "Load map" before pulling the bundle.
+  const [mapReady, setMapReady] = useState(false);
+  const [deferMap, setDeferMap] = useState(false);
 
   const { user, loading: authLoading, isGuest, setGuest } = useAuth();
 
@@ -119,14 +149,26 @@ export default function Dashboard() {
     loadReports();
   }, []);
 
-  // Initialize map
-  useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
+  // Create the map. Async because the maplibre bundle is code-split and pulled
+  // on demand (keeping it off the initial dashboard load). Safe to call from
+  // multiple triggers — the ref guard makes it idempotent.
+  const initMap = useCallback(async () => {
+    if (mapInitStartedRef.current || mapInstance.current || !mapRef.current) return;
+    mapInitStartedRef.current = true;
+    setDeferMap(false);
 
     try {
+      const maplibregl = await loadMapLibrary();
+      maplibreRef.current = maplibregl;
+      // The container may have unmounted while the bundle was downloading.
+      if (!mapRef.current) {
+        mapInitStartedRef.current = false;
+        return;
+      }
+
       const map = new maplibregl.Map({
         container: mapRef.current,
-        style: 'https://tiles.openfreemap.org/styles/positron',
+        style: MAP_STYLE_URL,
         center: [MAP_CENTER.lng, MAP_CENTER.lat],
         zoom: MAP_CENTER.zoom,
         attributionControl: true,
@@ -136,9 +178,11 @@ export default function Dashboard() {
         maxPitch: 0,
         failIfMajorPerformanceCaveat: false,
         trackResize: true,
+        ...mapOptionsForTier(mapTierRef.current),
       });
 
       map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+      map.once('load', () => setMapReady(true));
       mapInstance.current = map;
 
       // When the side panel opens/closes the map container changes width.
@@ -153,11 +197,35 @@ export default function Dashboard() {
       resizeObserverRef.current = ro;
     } catch (e) {
       console.error('Failed to initialize map:', e);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      mapInitStartedRef.current = false;
       setError('The map could not start (WebGL error). Please check your browser settings.');
     }
+  }, []);
 
-    return () => {
+  // Decide *when* to load the map, based on device tier. Runs once the dashboard
+  // (and therefore the map container) is actually on screen — not while the
+  // onboarding splash or auth spinner is showing.
+  useEffect(() => {
+    if (authLoading || !(user || isGuest)) return;
+
+    const tier = getDeviceTier();
+    mapTierRef.current = tier;
+
+    // Metered / low-end: wait for an explicit tap so we never auto-pull ~1 MB.
+    if (tier === TIERS.LOW) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDeferMap(true);
+      return;
+    }
+
+    // Otherwise load after first paint during idle — sooner on capable devices.
+    const cancel = onIdle(() => initMap(), tier === TIERS.HIGH ? 800 : 2000);
+    return cancel;
+  }, [authLoading, user, isGuest, initMap]);
+
+  // Tear the map down on unmount.
+  useEffect(
+    () => () => {
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect();
         resizeObserverRef.current = null;
@@ -166,12 +234,18 @@ export default function Dashboard() {
         mapInstance.current.remove();
         mapInstance.current = null;
       }
-    };
-  }, []);
+    },
+    []
+  );
 
-  // Basin markers
+  // Basin markers — (re)built once the map style is ready and whenever basins
+  // change. Gating on `mapReady` means markers still appear even if the basin
+  // data arrived before the (lazily loaded) map did.
   useEffect(() => {
-    if (!mapInstance.current || basins.length === 0) return;
+    if (!mapInstance.current || !mapReady || basins.length === 0) return;
+
+    const maplibregl = maplibreRef.current;
+    if (!maplibregl) return;
 
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
@@ -219,11 +293,14 @@ export default function Dashboard() {
       markersRef.current.push(marker);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basins]);
+  }, [basins, mapReady]);
 
   // Community report pins — small, so they don't compete with basin markers
   useEffect(() => {
-    if (!mapInstance.current) return;
+    if (!mapInstance.current || !mapReady) return;
+
+    const maplibregl = maplibreRef.current;
+    if (!maplibregl) return;
 
     reportMarkersRef.current.forEach((m) => m.remove());
     reportMarkersRef.current = [];
@@ -265,15 +342,7 @@ export default function Dashboard() {
 
       reportMarkersRef.current.push(marker);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reports]);
-
-  // Fetch a basin's forecast without moving the map. Guarded against races,
-  // and always reads the current role/language from refs.
-  // (Moved loadForecast to the top to fix scope issues)
-
-  // Select a basin: fly the map to it, then load its forecast.
-  // (Moved selectBasin to the top to fix scope issues)
+  }, [reports, mapReady]);
 
   // Role / language change: refresh only the advisory — no map movement.
   useEffect(() => {
@@ -300,6 +369,34 @@ export default function Dashboard() {
     <div className="main-content">
       <div className="map-container">
         <div ref={mapRef} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%' }} />
+
+        {/* Fills the map box immediately so the largest element paints without
+            waiting on WebGL — good for LCP — and holds the spot with no layout
+            shift when the canvas fades in. */}
+        {!mapReady && (
+          <div className="map-placeholder">
+            {deferMap ? (
+              <div className="map-placeholder-inner">
+                <div className="map-placeholder-icon" aria-hidden="true">🗺️</div>
+                <p className="map-placeholder-text">
+                  The interactive map uses about 1&nbsp;MB of data.
+                </p>
+                <button className="btn btn-primary btn-sm" onClick={initMap}>
+                  Load map
+                </button>
+              </div>
+            ) : error ? (
+              <div className="map-placeholder-inner">
+                <span className="map-placeholder-text">Map unavailable</span>
+              </div>
+            ) : (
+              <div className="map-placeholder-inner">
+                <div className="spinner" />
+                <span className="map-placeholder-text">Loading map…</span>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="basin-list animate-fade-in">
           {loading && (
@@ -357,8 +454,8 @@ export default function Dashboard() {
 
       {selectedBasin && (
         <div className="side-panel">
-          <button 
-            className="mobile-back-btn" 
+          <button
+            className="mobile-back-btn"
             onClick={() => setSelectedBasin(null)}
           >
             ← Back to map
@@ -483,8 +580,8 @@ export default function Dashboard() {
                 </div>
 
                 {forecast.advisory && (
-                  <AdvisoryCard 
-                    advisory={forecast.advisory} 
+                  <AdvisoryCard
+                    advisory={forecast.advisory}
                     basinId={selectedBasin?.id}
                     role={role}
                     language={language}
