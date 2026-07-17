@@ -249,7 +249,7 @@ export default function AlertsPage() {
         <button className="btn" onClick={() => supabase.auth.signOut()}>Logout</button>
       </div>
 
-      <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: '1fr 1fr' }}>
+      <div className="grid-2col">
         <div className="card">
           <div className="card-header"><div className="card-title">Send an alert</div></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

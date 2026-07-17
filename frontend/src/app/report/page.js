@@ -134,7 +134,7 @@ export default function ReportPage() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: '1fr 1fr' }}>
+      <div className="grid-2col">
         <div className="card" style={{ alignSelf: 'start' }}>
           <div className="card-header">
             <div className="card-title">Submit a report</div>
