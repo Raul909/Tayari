@@ -1,5 +1,5 @@
 """
-Flood risk prediction model using LightGBM.
+Flood risk prediction model (calibrated heuristic).
 
 Predicts flood probability 1-7 days ahead for each basin based on:
 - Current and forecasted river discharge
@@ -7,9 +7,10 @@ Predicts flood probability 1-7 days ahead for each basin based on:
 - Seasonal patterns
 - Discharge anomaly (vs historical median)
 
-For the hackathon, we use a heuristic-augmented approach:
-- A trained LightGBM model when enough historical data is available
-- A robust rule-based fallback that combines discharge ratio + rainfall signals
+The scorer is a transparent, calibrated multi-factor heuristic: a sigmoid on the
+discharge-to-threshold ratio, weighted by the 3-day trend, upstream rainfall, and
+season. It needs no trained-model artifact or heavy ML runtime — which keeps the
+production image small and the forecast fully explainable.
 """
 
 import logging
@@ -23,14 +24,6 @@ from app.models.schemas import (
 from app.services.weather_data import RainfallData
 
 logger = logging.getLogger(__name__)
-
-# Try importing LightGBM — fall back to pure heuristic if not available
-try:
-    import lightgbm as lgb
-    HAS_LIGHTGBM = True
-except ImportError:
-    HAS_LIGHTGBM = False
-    logger.warning("LightGBM not installed — using heuristic model only")
 
 # The highest probability we will ever report. Operational flood forecasting
 # always carries irreducible uncertainty — model error, ungauged tributaries,
@@ -48,8 +41,7 @@ def compute_flood_risk(
     """
     Compute flood risk score for a basin.
 
-    Uses feature engineering + LightGBM if available,
-    otherwise a calibrated heuristic model.
+    Uses feature engineering + a calibrated multi-factor heuristic scorer.
 
     Args:
         basin: Basin configuration with thresholds
