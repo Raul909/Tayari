@@ -34,8 +34,9 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("🌊 Tayari starting up...")
     logger.info(f"   Environment: {settings.environment}")
+    from app.services.alerts import twilio_configured
     logger.info(f"   Groq API: {'configured' if settings.groq_api_key else 'NOT configured (using templates)'}")
-    logger.info(f"   Africa's Talking: {'configured' if settings.at_api_key else 'NOT configured (simulated SMS)'}")
+    logger.info(f"   Twilio SMS: {'configured' if twilio_configured() else 'NOT configured (simulated SMS)'}")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
 
     # Create database tables and import any legacy JSON reports.

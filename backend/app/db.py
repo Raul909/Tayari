@@ -4,13 +4,13 @@ Database layer — async SQLAlchemy engine + session for Tayari.
 Works with two backends, chosen entirely by the DATABASE_URL env var:
 
 - **Local dev (default):** SQLite via aiosqlite — zero setup, a file on disk.
-- **Production:** Neon (serverless Postgres) via asyncpg — durable, shared by
+- **Production:** Supabase (managed Postgres) via asyncpg — durable, shared by
   the web dashboard and the mobile app through the same FastAPI backend.
 
 Both the web app and the Flutter app talk to this backend over HTTP; neither
 connects to the database directly (embedding DB credentials in a public web
 bundle or a distributed APK would be unsafe). So a report submitted from a
-phone lands in the *same* Neon database the dashboard reads from, and vice
+phone lands in the *same* Supabase database the dashboard reads from, and vice
 versa — that is what "one database for both apps" means here.
 """
 
@@ -95,7 +95,7 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    backend = "Neon/Postgres" if "asyncpg" in _db_url else "SQLite"
+    backend = "Supabase/Postgres" if "asyncpg" in _db_url else "SQLite"
     logger.info(f"   Database: {backend} ready ({_db_url.split('@')[-1]})")
 
 
