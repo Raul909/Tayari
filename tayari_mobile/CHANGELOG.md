@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.5.0] - 2026-07-19
+### Added
+- **Teacher and Student audiences.** Advisories can now be written for a teacher
+  (safety of students and school property) or a student, alongside the existing
+  farmer, pastoralist, county-officer, community-leader and general roles.
+
+### Changed
+- **Clearer, leak-free translations.** Non-English advisories are now checked for
+  foreign-script characters and untranslated English, retried once when a leak is
+  found, and scrubbed of any stray glyph before display — so problems like a
+  Chinese character slipping into an Arabic advisory, or "within 2 days" left in a
+  Somali one, no longer reach readers.
+- The on-device advisory fallback now covers all 11 supported languages (it
+  previously defaulted six of them to English when the backend was unreachable).
+
+### Fixed
+- **Advisory card no longer shows up empty.** When the backend serves a basin
+  forecast without an inline advisory, the app now fetches it from the dedicated
+  advisory endpoint instead of leaving the card blank.
+
 ## [1.4.1] - 2026-07-17
 ### Fixed
 - **Release build (APK):** Removed a machine-specific `org.gradle.java.home`
