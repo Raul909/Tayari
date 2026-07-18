@@ -49,12 +49,20 @@ class GroqService {
   }) async {
     if (!isAvailable) return null;
 
+    // Keep in sync with backend Language enum so a fallback advisory is written
+    // in the same language the user picked, not silently defaulted to English.
     final languageNames = {
       'en': 'English',
       'so': 'Somali',
       'sw': 'Swahili',
       'am': 'Amharic',
-      'om': 'Oromo',
+      'om': 'Oromo (Afaan Oromoo)',
+      'ar': 'Arabic',
+      'aa': 'Afar (Qafar af)',
+      'din': 'Dinka (Thuɔŋjäŋ)',
+      'dsh': 'Daasanach',
+      'luy': 'Luhya (Oluluhya)',
+      'tuv': 'Turkana (Ŋaturkana)',
     };
 
     final roleDescriptions = {
@@ -65,6 +73,9 @@ class GroqService {
       'county_officer':
           'a county/district disaster management officer',
       'community_leader': 'a village/community leader',
+      'teacher':
+          'a school teacher responsible for the safety of students and school property',
+      'student': 'a student or young person living near the river',
       'general': 'a resident living near the river floodplain',
     };
 
@@ -100,7 +111,7 @@ ACTIONS:
 - [action 2]
 - [action 3]
 
-CRITICAL: Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown — they are parsing markers. Write only the CONTENT in $langName. Do not translate or omit the labels.''';
+CRITICAL: Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown — they are parsing markers. Write only the CONTENT in $langName. Do not translate or omit the labels. Write the content ONLY in the $langName script — never emit Chinese, Japanese, Korean, Cyrillic, or Thai characters, and do not leave English words untranslated (except the labels and numbers).''';
 
     try {
       final response = await _dio.post(_baseUrl, data: {

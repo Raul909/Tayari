@@ -8,6 +8,7 @@ closing the gap between information generated and information acted upon.
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -64,6 +65,78 @@ ROLE_DESCRIPTIONS = {
     UserRole.STUDENT: "a student or young person living near the river",
     UserRole.GENERAL: "a resident living near the river floodplain",
 }
+
+
+# ── Translation quality guard ────────────────────────────────────────────────
+# The general translation LLM occasionally leaks the source language or a stray
+# foreign-script token into the output — e.g. dropping a Chinese "发生" into an
+# Arabic advisory, or leaving "within 2 days" untranslated in Somali. NLLB was
+# meant to avoid this, but HF no longer serves NLLB through any inference
+# provider, so every non-English advisory now depends on the Groq translator.
+# These helpers detect such leaks (to trigger a stricter re-translation) and, as
+# a last resort, strip any character from a script that must never appear in a
+# flood advisory — so a foreign glyph can never reach a reader at the moment it
+# matters most.
+
+# Scripts that are never valid in any Tayari advisory. (Arabic, Ethiopic, and
+# Latin — the scripts our languages actually use — are deliberately excluded.)
+_FORBIDDEN_SCRIPT = re.compile(
+    "["
+    "぀-ヿ"   # Japanese kana
+    "㐀-䶿"   # CJK extension A
+    "一-鿿"   # CJK unified ideographs
+    "가-힯"   # Hangul
+    "Ѐ-ӿ"   # Cyrillic
+    "฀-๿"   # Thai
+    "ऀ-ॿ"   # Devanagari
+    "֐-׿"   # Hebrew
+    "]"
+)
+
+# Distinctive English words that should never survive translation into another
+# language. Used ONLY to decide whether to retry (never to strip), so an
+# occasional false positive costs one extra API call, not a corrupted advisory.
+_ENGLISH_LEAK_WORDS = frozenset({
+    "within", "days", "river", "flow", "normal", "water", "people", "flood",
+    "warning", "level", "risk", "your", "will", "livestock", "grain", "ground",
+    "prepare", "move", "expected", "threshold", "discharge", "between", "flooding",
+    "rising", "falling", "evacuate", "evacuation", "immediately", "boats",
+})
+
+_LABELS_RE = re.compile(r"^\s*(TITLE|BODY|ACTIONS)\s*:", re.IGNORECASE | re.MULTILINE)
+
+
+def _translation_leaks(text: str, language: Language) -> list[str]:
+    """
+    Return the offending tokens if `text` looks like a bad translation into
+    `language`, or an empty list if it looks clean.
+
+    Two signals: (1) any character from a forbidden script, and (2) distinctive
+    English words surviving in the content (the English TITLE/BODY/ACTIONS labels
+    are stripped first, since we keep those on purpose as parsing markers).
+    English targets are never flagged — there is nothing to translate into.
+    """
+    if language == Language.ENGLISH:
+        return []
+    problems = sorted(set(_FORBIDDEN_SCRIPT.findall(text)))
+    content = _LABELS_RE.sub("", text).lower()
+    english = {w for w in re.findall(r"[a-z]{3,}", content) if w in _ENGLISH_LEAK_WORDS}
+    return problems + sorted(english)
+
+
+def _sanitize_translation(text: str, language: Language) -> str:
+    """
+    Last-resort cleanup applied to every non-English advisory: drop any
+    forbidden-script character that survived translation (and any retry), then
+    tidy the whitespace the removal leaves behind. This guards the NLLB path,
+    the Groq path, and the Oromo fix-ups alike.
+    """
+    if language == Language.ENGLISH:
+        return text
+    cleaned = _FORBIDDEN_SCRIPT.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r" +\n", "\n", cleaned)
+    return cleaned
 
 
 async def generate_advisory(
@@ -223,6 +296,10 @@ ACTIONS:
                 .replace("olola", "namoota").replace("Olola", "Namoota")
             )
 
+        # STEP 4: Final scrub — strip any forbidden-script glyph that slipped
+        # through translation and the retry, guarding every path above at once.
+        final_text = _sanitize_translation(final_text, language)
+
     advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
     
     # Check for custom voice note or generate TTS
@@ -284,7 +361,29 @@ async def _translate_via_nllb(english_text: str, language: Language) -> str:
 
 
 async def _translate_with_groq(client, english_text: str, language: Language) -> str:
-    """Translate an English advisory into `language` via the Groq LLM."""
+    """
+    Translate an English advisory into `language` via the Groq LLM, checking the
+    result for source-language / foreign-script leaks and retrying once with a
+    stricter prompt if any are found. A general LLM occasionally leaves English
+    words in or drops a stray foreign glyph; one corrective pass clears almost
+    all of these before the sanitizer (in the caller) catches the rest.
+    """
+    translated = await _run_groq_translation(client, english_text, language)
+    leaks = _translation_leaks(translated, language)
+    if leaks:
+        logger.warning(
+            f"Groq translation into {language} leaked {leaks[:8]}; retrying stricter"
+        )
+        translated = await _run_groq_translation(
+            client, english_text, language, leaked=leaks
+        )
+    return translated
+
+
+async def _run_groq_translation(
+    client, english_text: str, language: Language, leaked: Optional[list[str]] = None
+) -> str:
+    """One Groq translation call. `leaked` marks a corrective retry (see caller)."""
     glossary = FLOOD_GLOSSARY.get(language, "")
     translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
 RULES:
@@ -292,6 +391,12 @@ RULES:
 2. Keep all numbers as digits exactly as given (e.g. 50,000; 126%). Never spell them out.
 3. Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown. Only translate the text after them.
 4. IMPORTANT VOCABULARY TO USE strictly (failure to use these is life-threatening): {glossary}
+5. Write ONLY in the {LANGUAGE_NAMES[language]} script. Never emit a character from any other writing system (no Chinese, Japanese, Korean, Cyrillic, Thai, etc.).
+"""
+    if leaked:
+        translate_prompt += f"""
+Your previous attempt was REJECTED: it left these non-{LANGUAGE_NAMES[language]} tokens in the output: {', '.join(leaked[:8])}.
+Re-translate the ENTIRE advisory into {LANGUAGE_NAMES[language]}. Every one of those tokens must be gone. Keep only the digits, units, and the English labels TITLE:/BODY:/ACTIONS:.
 """
     if language == Language.OROMO:
         translate_prompt += """
@@ -318,7 +423,9 @@ Source Advisory in English:
         model=settings.groq_model,
         messages=[{"role": "user", "content": translate_prompt}],
         max_tokens=1024,
-        temperature=0.3,
+        # A corrective retry runs cooler so the model sticks to a faithful,
+        # leak-free rendering instead of paraphrasing freely again.
+        temperature=0.2 if leaked else 0.3,
     )
     return response_tl.choices[0].message.content.strip()
 

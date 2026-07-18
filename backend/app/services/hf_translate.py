@@ -39,7 +39,10 @@ NLLB_LANG_CODES = {
 }
 
 SRC_LANG = "eng_Latn"
-_TIMEOUT_SECONDS = 30
+# Kept short on purpose: NLLB is a best-effort accelerator, and the Groq
+# translator is a full fallback. If the HF router is slow or unavailable we want
+# to give up quickly rather than delay every non-English advisory.
+_TIMEOUT_SECONDS = 8
 
 
 def _hf_token() -> str | None:
