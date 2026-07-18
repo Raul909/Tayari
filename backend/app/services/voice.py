@@ -1,14 +1,15 @@
 import asyncio
-import io
+import logging
 import os
-import requests
-import tempfile
 import uuid
 from pathlib import Path
-from pydantic import HttpUrl
+
+import requests
 
 from app.models.schemas import Advisory, Language, LOW_RESOURCE_LANGUAGES
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Mapping Tayari Language enums to Meta MMS-TTS models on Hugging Face
 HF_TTS_MODELS = {
@@ -56,7 +57,7 @@ async def get_or_generate_voice_note(advisory: Advisory) -> Advisory:
             advisory.voice_note_url = f"/static/audio/{filename}"
             advisory.requires_recording = False
     except Exception as e:
-        print(f"Error generating TTS: {e}")
+        logger.warning(f"TTS generation failed, will require manual recording: {e}")
         # Fallback to requiring recording if TTS fails
         advisory.requires_recording = True
         advisory.voice_note_url = None
@@ -64,10 +65,14 @@ async def get_or_generate_voice_note(advisory: Advisory) -> Advisory:
     return advisory
 
 def _call_hf_inference(model_id: str, text: str) -> bytes:
-    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    api_url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
     # Use HF token if provided in environment, otherwise it might fail/rate limit
     headers = {}
-    hf_token = os.environ.get("HF_API_TOKEN") or getattr(settings, "hf_api_token", None)
+    hf_token = (
+        os.environ.get("HF_API_TOKEN")
+        or os.environ.get("HF_TOKEN")
+        or getattr(settings, "hf_api_token", None)
+    )
     if hf_token:
         headers["Authorization"] = f"Bearer {hf_token}"
         
