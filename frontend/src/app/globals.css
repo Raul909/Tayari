@@ -862,6 +862,53 @@ tr:hover td { background: var(--surface-sunken); }
   align-items: center;
 }
 
+/* Desktop & tablet (≥769px): the dashboard is ONE non-scrolling screen. The map
+   holds its position while the side panel and basin overlay each scroll on their
+   own. Without this, tall side-panel content grows .main-content past the
+   viewport, the whole page scrolls, and the basin list gets dragged out of view
+   (and its last cards become unreachable). */
+@media (min-width: 769px) {
+  .main-content {
+    /* flex:none (not the base flex:1) so this pins to the explicit height below
+       instead of flex-growing to its content. The parent .app-layout only has an
+       indefinite min-height, so a flex-basis:0% item would otherwise stretch to
+       the tall side-panel content and scroll the whole page. */
+    flex: none;
+    height: calc(100vh - var(--header-height));
+    height: calc(100dvh - var(--header-height));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .side-panel {
+    /* Fill the fixed-height row and scroll its own content, never the page. */
+    height: 100%;
+  }
+
+  .basin-list {
+    /* Bound to the visible map so every basin card stays reachable — the last
+       one no longer falls off the bottom edge. Scrolls independently. */
+    max-height: calc(100dvh - var(--header-height) - 28px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+    padding-right: 6px;
+    padding-bottom: 2px;
+  }
+
+  .basin-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  .basin-list::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 3px;
+  }
+  .basin-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
 /* Large desktops & external monitors. */
 @media (min-width: 1600px) {
   :root {

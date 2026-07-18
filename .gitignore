@@ -56,5 +56,7 @@ backend/venv/
 
 # Hugging Face deployment scripts and logs
 hf_*.py
+# ...but hf_translate.py is a real application module, not a deploy script.
+!backend/app/services/hf_translate.py
 *.log
 .commandcode/

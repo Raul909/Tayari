@@ -107,9 +107,26 @@ export function AuthProvider({ children }) {
     setGuest(false);
   }, []);
 
+  const resetPasswordForEmail = useCallback(async (email) => {
+    const supabase = await getSupabase();
+    const redirectTo = `${window.location.origin}/reset-password`;
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    if (error) throw error;
+    return data;
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword) => {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return data;
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, isGuest, setGuest, login, register, logout, prefetch }}
+      value={{ user, loading, isGuest, setGuest, login, register, logout, prefetch, resetPasswordForEmail, updatePassword }}
     >
       {children}
     </AuthContext.Provider>

@@ -45,7 +45,16 @@ class SyncService {
 
       final risk = data['risk'] as Map<String, dynamic>;
       final impact = data['impact'] as Map<String, dynamic>;
-      final advisoryText = _formatAdvisory(data['advisory']);
+      var advisoryText = _formatAdvisory(data['advisory']);
+
+      // Some deployed backends omit the advisory from /forecasts (it lags the
+      // committed code). When that happens, fetch it from the dedicated
+      // /advisory endpoint so the user still gets tailored, translated guidance
+      // instead of an empty advisory card.
+      if (advisoryText.isEmpty) {
+        final adv = await _apiClient.getAdvisory(basinId, role, language);
+        if (adv != null) advisoryText = _formatAdvisory(adv['advisory']);
+      }
 
       final healthFacilities =
           ((impact['clinics_at_risk'] ?? 0) as num).toInt() +

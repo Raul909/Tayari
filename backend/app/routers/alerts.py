@@ -194,7 +194,7 @@ async def _process_and_send_alert(request: AlertRequest, basin):
         sms_text = f"{advisory.title}\n\n{advisory.body}\n\n"
         sms_text += "\n".join(f"• {a}" for a in advisory.actions[:3])  # Max 3 actions for SMS
 
-        # Send via Africa's Talking
+        # Deliver via Twilio (or simulate if Twilio isn't configured)
         await send_sms_alert(sms_text, request.phone_numbers)
 
         # Record alert to the database

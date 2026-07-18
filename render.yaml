@@ -13,5 +13,13 @@ services:
         value: https://tayari.pages.dev
       - key: GROQ_API_KEY
         sync: false
-      - key: AT_API_KEY
+      # Hugging Face token — NLLB-200 advisory translation + MMS-TTS voice notes.
+      - key: HF_TOKEN
+        sync: false
+      # Twilio SMS — set these three in the Render dashboard to send real SMS.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
         sync: false

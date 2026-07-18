@@ -62,19 +62,7 @@ async def fetch_river_discharge(
         logger.error(f"Failed to fetch flood data: {e}")
         raise
 
-    daily = data.get("daily", {})
-    times = daily.get("time", [])
-
-    results = []
-    for i, t in enumerate(times):
-        results.append(DailyDischarge(
-            date=date.fromisoformat(t),
-            discharge_mean=_safe_get(daily, "river_discharge_mean", i),
-            discharge_max=_safe_get(daily, "river_discharge_max", i),
-            discharge_min=_safe_get(daily, "river_discharge_min", i),
-            discharge_median=_safe_get(daily, "river_discharge_median", i),
-        ))
-
+    results = _parse_discharge(data)
     logger.info(
         f"Fetched {len(results)} discharge records for ({latitude}, {longitude})"
     )
@@ -119,24 +107,28 @@ async def fetch_historical_discharge(
         logger.error(f"Failed to fetch historical flood data: {e}")
         raise
 
-    daily = data.get("daily", {})
-    times = daily.get("time", [])
-
-    results = []
-    for i, t in enumerate(times):
-        results.append(DailyDischarge(
-            date=date.fromisoformat(t),
-            discharge_mean=_safe_get(daily, "river_discharge_mean", i),
-            discharge_max=_safe_get(daily, "river_discharge_max", i),
-            discharge_min=_safe_get(daily, "river_discharge_min", i),
-            discharge_median=_safe_get(daily, "river_discharge_median", i),
-        ))
-
+    results = _parse_discharge(data)
     logger.info(
         f"Fetched {len(results)} historical records for ({latitude}, {longitude}) "
         f"from {start_date} to {end_date}"
     )
     return results
+
+
+def _parse_discharge(data: dict) -> list[DailyDischarge]:
+    """Parse an Open-Meteo flood response into DailyDischarge records."""
+    daily = data.get("daily", {})
+    times = daily.get("time", [])
+    return [
+        DailyDischarge(
+            date=date.fromisoformat(t),
+            discharge_mean=_safe_get(daily, "river_discharge_mean", i),
+            discharge_max=_safe_get(daily, "river_discharge_max", i),
+            discharge_min=_safe_get(daily, "river_discharge_min", i),
+            discharge_median=_safe_get(daily, "river_discharge_median", i),
+        )
+        for i, t in enumerate(times)
+    ]
 
 
 def _safe_get(daily: dict, key: str, index: int) -> Optional[float]:

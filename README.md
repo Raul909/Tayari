@@ -30,9 +30,10 @@ Tayari is **free to use** and open source, because an early warning should never
 
 - 🔮 **Predicts** river flooding 1–7 days ahead using a LightGBM model (with a calibrated heuristic fallback) on Open-Meteo's GloFAS river discharge and rainfall forecasts.
 - 🌍 **Overlays** impact data, estimating the population and critical infrastructure (schools, clinics, roads) at risk in each basin.
-- 🗣️ **Translates** technical jargon into role-specific advisories in **English, Somali, Swahili, Amharic, and Oromo** using an LLM — with pre-written template fallbacks so warnings go out even if the AI is down.
+- 🗣️ **Translates** technical jargon into role-specific advisories (including for teachers, students, farmers, and pastoralists) in **English, Somali, Swahili, Amharic, and Oromo** using an LLM — with pre-written template fallbacks so warnings go out even if the AI is down.
 - 📱 **Delivers** alerts via the Africa's Talking SMS gateway, a fast Next.js PWA dashboard for coordinators, and a Flutter mobile app for the field.
 - 📸 **Listens** — community members submit geotagged photo reports of ground conditions, and coordinators or neighbours respond with advice threads (safe routes, closed bridges, who to contact) that everyone can see, closing the loop between forecast and reality.
+- 🔐 **Secure Authentication** with a seamless, end-to-end user experience, including a comprehensive "Forgot Password" flow following modern UX industry standards.
 
 ---
 

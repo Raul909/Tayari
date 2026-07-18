@@ -24,6 +24,8 @@ const kRoleOptions = <RoleOption>[
   RoleOption('pastoralist', 'Pastoralist'),
   RoleOption('county_officer', 'County officer'),
   RoleOption('community_leader', 'Community leader'),
+  RoleOption('teacher', 'Teacher'),
+  RoleOption('student', 'Student'),
 ];
 
 /// Canonical languages — must match backend Language values.

@@ -22,6 +22,8 @@ class UserRole(str, Enum):
     PASTORALIST = "pastoralist"
     COUNTY_OFFICER = "county_officer"
     COMMUNITY_LEADER = "community_leader"
+    TEACHER = "teacher"
+    STUDENT = "student"
     GENERAL = "general"
 
 

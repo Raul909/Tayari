@@ -8,6 +8,7 @@ closing the gap between information generated and information acted upon.
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -60,8 +61,82 @@ ROLE_DESCRIPTIONS = {
     UserRole.PASTORALIST: "a pastoralist herder who moves livestock and depends on grazing land near the river",
     UserRole.COUNTY_OFFICER: "a county/district disaster management officer responsible for coordinating emergency response",
     UserRole.COMMUNITY_LEADER: "a village/community leader responsible for informing and organizing their community",
+    UserRole.TEACHER: "a school teacher or headmaster responsible for the safety of students and school property",
+    UserRole.STUDENT: "a student or young person living near the river",
     UserRole.GENERAL: "a resident living near the river floodplain",
 }
+
+
+# ── Translation quality guard ────────────────────────────────────────────────
+# The general translation LLM occasionally leaks the source language or a stray
+# foreign-script token into the output — e.g. dropping a Chinese "发生" into an
+# Arabic advisory, or leaving "within 2 days" untranslated in Somali. NLLB was
+# meant to avoid this, but HF no longer serves NLLB through any inference
+# provider, so every non-English advisory now depends on the Groq translator.
+# These helpers detect such leaks (to trigger a stricter re-translation) and, as
+# a last resort, strip any character from a script that must never appear in a
+# flood advisory — so a foreign glyph can never reach a reader at the moment it
+# matters most.
+
+# Scripts that are never valid in any Tayari advisory. (Arabic, Ethiopic, and
+# Latin — the scripts our languages actually use — are deliberately excluded.)
+_FORBIDDEN_SCRIPT = re.compile(
+    "["
+    "぀-ヿ"   # Japanese kana
+    "㐀-䶿"   # CJK extension A
+    "一-鿿"   # CJK unified ideographs
+    "가-힯"   # Hangul
+    "Ѐ-ӿ"   # Cyrillic
+    "฀-๿"   # Thai
+    "ऀ-ॿ"   # Devanagari
+    "֐-׿"   # Hebrew
+    "]"
+)
+
+# Distinctive English words that should never survive translation into another
+# language. Used ONLY to decide whether to retry (never to strip), so an
+# occasional false positive costs one extra API call, not a corrupted advisory.
+_ENGLISH_LEAK_WORDS = frozenset({
+    "within", "days", "river", "flow", "normal", "water", "people", "flood",
+    "warning", "level", "risk", "your", "will", "livestock", "grain", "ground",
+    "prepare", "move", "expected", "threshold", "discharge", "between", "flooding",
+    "rising", "falling", "evacuate", "evacuation", "immediately", "boats",
+})
+
+_LABELS_RE = re.compile(r"^\s*(TITLE|BODY|ACTIONS)\s*:", re.IGNORECASE | re.MULTILINE)
+
+
+def _translation_leaks(text: str, language: Language) -> list[str]:
+    """
+    Return the offending tokens if `text` looks like a bad translation into
+    `language`, or an empty list if it looks clean.
+
+    Two signals: (1) any character from a forbidden script, and (2) distinctive
+    English words surviving in the content (the English TITLE/BODY/ACTIONS labels
+    are stripped first, since we keep those on purpose as parsing markers).
+    English targets are never flagged — there is nothing to translate into.
+    """
+    if language == Language.ENGLISH:
+        return []
+    problems = sorted(set(_FORBIDDEN_SCRIPT.findall(text)))
+    content = _LABELS_RE.sub("", text).lower()
+    english = {w for w in re.findall(r"[a-z]{3,}", content) if w in _ENGLISH_LEAK_WORDS}
+    return problems + sorted(english)
+
+
+def _sanitize_translation(text: str, language: Language) -> str:
+    """
+    Last-resort cleanup applied to every non-English advisory: drop any
+    forbidden-script character that survived translation (and any retry), then
+    tidy the whitespace the removal leaves behind. This guards the NLLB path,
+    the Groq path, and the Oromo fix-ups alike.
+    """
+    if language == Language.ENGLISH:
+        return text
+    cleaned = _FORBIDDEN_SCRIPT.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r" +\n", "\n", cleaned)
+    return cleaned
 
 
 async def generate_advisory(
@@ -189,17 +264,142 @@ ACTIONS:
     if language == Language.ENGLISH:
         final_text = english_text
     else:
-        # STEP 2: Translation
-        glossary = FLOOD_GLOSSARY.get(language, "")
-        translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
+        final_text = None
+
+        # STEP 2a: Prefer HF NLLB-200 for the languages it covers — it's built
+        # for these low-resource languages and avoids the cross-language token
+        # leaks the general LLM occasionally produces. Any failure falls through
+        # to the Groq translator below, so behaviour never regresses. Imported
+        # lazily (like voice) so `requests` never becomes a startup dependency.
+        from app.services import hf_translate
+
+        if hf_translate.supports(language):
+            try:
+                final_text = await _translate_via_nllb(english_text, language)
+            except Exception as e:
+                logger.warning(
+                    f"NLLB translation failed for {language}; falling back to Groq: {e}"
+                )
+                final_text = None
+
+        # STEP 2b: Groq translation — the fallback, and the only path for
+        # languages NLLB doesn't cover (Afar, Daasanach, Luhya, Turkana).
+        if final_text is None:
+            final_text = await _translate_with_groq(client, english_text, language)
+
+        # STEP 3: Oromo safety net — applies to whichever translator ran, so a
+        # catastrophic mistranslation ("dhihaa"=west, "olola"=propaganda) can
+        # never reach the reader. Replaces are no-ops when the tokens are absent.
+        if language == Language.OROMO:
+            final_text = (
+                final_text.replace("dhihaa", "lolaa").replace("Dhihaa", "Lolaa")
+                .replace("olola", "namoota").replace("Olola", "Namoota")
+            )
+
+        # STEP 4: Final scrub — strip any forbidden-script glyph that slipped
+        # through translation and the retry, guarding every path above at once.
+        final_text = _sanitize_translation(final_text, language)
+
+    advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
+    
+    # Check for custom voice note or generate TTS
+    from app.services.voice import get_or_generate_voice_note
+    advisory = await get_or_generate_voice_note(advisory)
+
+    return advisory
+
+
+def _split_advisory_text(text: str) -> tuple[str, str, list[str]]:
+    """
+    Pull the title, body, and action lines out of a TITLE/BODY/ACTIONS block.
+
+    Shares the parsing rules of _parse_advisory_response but returns the raw
+    strings so each can be translated on its own (NLLB is a sentence-level model
+    and mangles the structured labels if handed the whole block at once).
+    """
+    title, body, actions = "", "", []
+    current = None
+    for line in text.strip().split("\n"):
+        line = line.strip()
+        if line.upper().startswith("TITLE:"):
+            title = line[6:].strip()
+            current = "title"
+        elif line.upper().startswith("BODY:"):
+            body = line[5:].strip()
+            current = "body"
+        elif line.upper().startswith("ACTIONS:"):
+            current = "actions"
+        elif current == "body" and line and not line.startswith("-"):
+            body += " " + line
+        elif current == "actions" and line.startswith("-"):
+            actions.append(line[1:].strip())
+        elif current == "actions" and line:
+            actions.append(line)
+    return title, body, actions
+
+
+async def _translate_via_nllb(english_text: str, language: Language) -> str:
+    """
+    Translate an English advisory into `language` with NLLB, field by field,
+    then rebuild the TITLE/BODY/ACTIONS block (labels stay English so the
+    downstream parser still works). Raises if the English text can't be parsed
+    or NLLB fails — the caller then falls back to the Groq translator.
+    """
+    from app.services import hf_translate
+
+    title, body, actions = _split_advisory_text(english_text)
+    if not title and not body:
+        raise RuntimeError("Could not parse English advisory for NLLB translation")
+
+    fields = [title, body, *actions]
+    translated = await hf_translate.translate_fields(fields, language)
+    t_title, t_body, t_actions = translated[0], translated[1], translated[2:]
+
+    lines = [f"TITLE: {t_title}", f"BODY: {t_body}", "ACTIONS:"]
+    lines += [f"- {a}" for a in t_actions]
+    return "\n".join(lines)
+
+
+async def _translate_with_groq(client, english_text: str, language: Language) -> str:
+    """
+    Translate an English advisory into `language` via the Groq LLM, checking the
+    result for source-language / foreign-script leaks and retrying once with a
+    stricter prompt if any are found. A general LLM occasionally leaves English
+    words in or drops a stray foreign glyph; one corrective pass clears almost
+    all of these before the sanitizer (in the caller) catches the rest.
+    """
+    translated = await _run_groq_translation(client, english_text, language)
+    leaks = _translation_leaks(translated, language)
+    if leaks:
+        logger.warning(
+            f"Groq translation into {language} leaked {leaks[:8]}; retrying stricter"
+        )
+        translated = await _run_groq_translation(
+            client, english_text, language, leaked=leaks
+        )
+    return translated
+
+
+async def _run_groq_translation(
+    client, english_text: str, language: Language, leaked: Optional[list[str]] = None
+) -> str:
+    """One Groq translation call. `leaked` marks a corrective retry (see caller)."""
+    glossary = FLOOD_GLOSSARY.get(language, "")
+    translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
 RULES:
 1. Translate every word of the content. Do NOT leave any English words (like Thursday or Saturday) in the output.
 2. Keep all numbers as digits exactly as given (e.g. 50,000; 126%). Never spell them out.
 3. Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown. Only translate the text after them.
 4. IMPORTANT VOCABULARY TO USE strictly (failure to use these is life-threatening): {glossary}
+5. Write ONLY in the {LANGUAGE_NAMES[language]} script. Never emit a character from any other writing system (no Chinese, Japanese, Korean, Cyrillic, Thai, etc.).
 """
-        if language == Language.OROMO:
-            translate_prompt += """
+    if leaked:
+        translate_prompt += f"""
+Your previous attempt was REJECTED: it left these non-{LANGUAGE_NAMES[language]} tokens in the output: {', '.join(leaked[:8])}.
+Re-translate the ENTIRE advisory into {LANGUAGE_NAMES[language]}. Every one of those tokens must be gone. Keep only the digits, units, and the English labels TITLE:/BODY:/ACTIONS:.
+"""
+    if language == Language.OROMO:
+        translate_prompt += """
 Example translation for Oromo:
 English:
 TITLE: Flood Warning — Omo River (High Level)
@@ -213,34 +413,21 @@ BODY: Dhangala'iinsi Laga Omoo %126 gahee, guyyaa tokko keessatti daangaa lolaa 
 ACTIONS:
 - Bidiruuwwanii fi ambulaansota dursanii qopheessaa.
 """
-        translate_prompt += f"""
+    translate_prompt += f"""
 
 Source Advisory in English:
 {english_text}"""
-        
-        response_tl = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=settings.groq_model,
-            messages=[{"role": "user", "content": translate_prompt}],
-            max_tokens=1024,
-            temperature=0.3,
-        )
-        final_text = response_tl.choices[0].message.content.strip()
-        
-        # STEP 3: Verification Layer
-        if language == Language.OROMO:
-            if "dhihaa" in final_text.lower() or "olola" in final_text.lower():
-                # Failsafe simple replace to prevent catastrophic translation
-                final_text = final_text.replace("dhihaa", "lolaa").replace("Dhihaa", "Lolaa")
-                final_text = final_text.replace("olola", "namoota").replace("Olola", "Namoota")
 
-    advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
-    
-    # Check for custom voice note or generate TTS
-    from app.services.voice import get_or_generate_voice_note
-    advisory = await get_or_generate_voice_note(advisory)
-        
-    return advisory
+    response_tl = await asyncio.to_thread(
+        client.chat.completions.create,
+        model=settings.groq_model,
+        messages=[{"role": "user", "content": translate_prompt}],
+        max_tokens=1024,
+        # A corrective retry runs cooler so the model sticks to a faithful,
+        # leak-free rendering instead of paraphrasing freely again.
+        temperature=0.2 if leaked else 0.3,
+    )
+    return response_tl.choices[0].message.content.strip()
 
 
 def _parse_advisory_response(
@@ -403,6 +590,52 @@ def _generate_template_advisory(
                 "Arifu vituo vya afya kujiandaa kwa magonjwa ya maji",
                 "Wasiliana na ICPAC na mamlaka ya kitaifa ya maafa",
                 "Toa ushauri wa umma kupitia redio za FM na viongozi wa jamii",
+            ],
+        },
+        UserRole.TEACHER: {
+            Language.ENGLISH: [
+                "Dismiss students early so they can walk home safely before waters rise",
+                "Move school records, books, and computers to the highest floor or shelves",
+                f"Keep children away from the {river_name} and flooded drainage ditches",
+                "Communicate with parents about emergency pickup points",
+                "Turn off main electricity switches before leaving the school building",
+            ],
+            Language.SOMALI: [
+                "Ardayda xilli hore sii daa si ay ammaan ugu gaaraan guryahooda",
+                "Diiwaanka iskuulka, buugaagta, iyo kombiyuutarada gee dabaqa ugu sarreeya",
+                f"Carruurta ka fogee {river_name} iyo meelaha daadku maro",
+                "Waalidiinta la socodsii meelaha carruurta loogu yimaado xilliga gurmadka",
+                "Dami korontada guud ee iskuulka inta aadan bixin",
+            ],
+            Language.SWAHILI: [
+                "Waruhusu wanafunzi waende nyumbani mapema kabla ya maji kupanda",
+                "Hamishia rekodi za shule, vitabu, na kompyuta kwenye ghorofa ya juu au rafu za juu",
+                f"Waweke watoto mbali na {river_name} na mitaro iliyofurika",
+                "Wasiliana na wazazi kuhusu maeneo salama ya kuwachukua watoto",
+                "Zima swichi kuu ya umeme kabla ya kuondoka shuleni",
+            ],
+        },
+        UserRole.STUDENT: {
+            Language.ENGLISH: [
+                "Walk home in groups and do not stop to play near the floodwaters",
+                f"Never try to cross the {river_name} or flooded roads — water is stronger than it looks",
+                "Tell your parents or teacher immediately if you see the water rising quickly",
+                "Help carry important light items like documents when your family moves",
+                "Stay on high ground and do not drink or swim in floodwater",
+            ],
+            Language.SOMALI: [
+                "Idinkoo koox ah guryaha aada oo ha ku ciyaarina biyaha daadka agtooda",
+                f"Weligaa ha isku dayin inaad ka gudubto {river_name} — biyuhu way ka xoog badan yihiin sida ay u muuqdaan",
+                "Isla markiiba u sheeg waalidkaa ama macalinkaaga haddii aad aragto biyaha oo kor u kacaya",
+                "Caawi qoyskaaga inaad qaado waraaqaha muhiimka ah marka aad guuraysaan",
+                "Dhul sare joog oo ha cabin hana ku dabbaalan biyaha daadka",
+            ],
+            Language.SWAHILI: [
+                "Tembeeni kwa vikundi kwenda nyumbani na msicheze karibu na mafuriko",
+                f"Usijaribu kuvuka {river_name} — maji yana nguvu sana",
+                "Mjulishe mzazi au mwalimu mara moja ukiona maji yakipanda haraka",
+                "Saidia kubeba vitu vyepesi na muhimu wakati familia inahama",
+                "Kaa kwenye ardhi ya juu na usinywe wala kuogelea kwenye maji ya mafuriko",
             ],
         },
         UserRole.GENERAL: {

@@ -104,6 +104,8 @@ export const ROLES = [
   { value: 'pastoralist', label: 'Pastoralist' },
   { value: 'county_officer', label: 'County Officer' },
   { value: 'community_leader', label: 'Community Leader' },
+  { value: 'teacher', label: 'Teacher' },
+  { value: 'student', label: 'Student / Youth' },
 ];
 
 // All languages Tayari can produce advisories in. The set shown for a given
