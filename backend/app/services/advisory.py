@@ -189,17 +189,110 @@ ACTIONS:
     if language == Language.ENGLISH:
         final_text = english_text
     else:
-        # STEP 2: Translation
-        glossary = FLOOD_GLOSSARY.get(language, "")
-        translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
+        final_text = None
+
+        # STEP 2a: Prefer HF NLLB-200 for the languages it covers — it's built
+        # for these low-resource languages and avoids the cross-language token
+        # leaks the general LLM occasionally produces. Any failure falls through
+        # to the Groq translator below, so behaviour never regresses. Imported
+        # lazily (like voice) so `requests` never becomes a startup dependency.
+        from app.services import hf_translate
+
+        if hf_translate.supports(language):
+            try:
+                final_text = await _translate_via_nllb(english_text, language)
+            except Exception as e:
+                logger.warning(
+                    f"NLLB translation failed for {language}; falling back to Groq: {e}"
+                )
+                final_text = None
+
+        # STEP 2b: Groq translation — the fallback, and the only path for
+        # languages NLLB doesn't cover (Afar, Daasanach, Luhya, Turkana).
+        if final_text is None:
+            final_text = await _translate_with_groq(client, english_text, language)
+
+        # STEP 3: Oromo safety net — applies to whichever translator ran, so a
+        # catastrophic mistranslation ("dhihaa"=west, "olola"=propaganda) can
+        # never reach the reader. Replaces are no-ops when the tokens are absent.
+        if language == Language.OROMO:
+            final_text = (
+                final_text.replace("dhihaa", "lolaa").replace("Dhihaa", "Lolaa")
+                .replace("olola", "namoota").replace("Olola", "Namoota")
+            )
+
+    advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
+    
+    # Check for custom voice note or generate TTS
+    from app.services.voice import get_or_generate_voice_note
+    advisory = await get_or_generate_voice_note(advisory)
+
+    return advisory
+
+
+def _split_advisory_text(text: str) -> tuple[str, str, list[str]]:
+    """
+    Pull the title, body, and action lines out of a TITLE/BODY/ACTIONS block.
+
+    Shares the parsing rules of _parse_advisory_response but returns the raw
+    strings so each can be translated on its own (NLLB is a sentence-level model
+    and mangles the structured labels if handed the whole block at once).
+    """
+    title, body, actions = "", "", []
+    current = None
+    for line in text.strip().split("\n"):
+        line = line.strip()
+        if line.upper().startswith("TITLE:"):
+            title = line[6:].strip()
+            current = "title"
+        elif line.upper().startswith("BODY:"):
+            body = line[5:].strip()
+            current = "body"
+        elif line.upper().startswith("ACTIONS:"):
+            current = "actions"
+        elif current == "body" and line and not line.startswith("-"):
+            body += " " + line
+        elif current == "actions" and line.startswith("-"):
+            actions.append(line[1:].strip())
+        elif current == "actions" and line:
+            actions.append(line)
+    return title, body, actions
+
+
+async def _translate_via_nllb(english_text: str, language: Language) -> str:
+    """
+    Translate an English advisory into `language` with NLLB, field by field,
+    then rebuild the TITLE/BODY/ACTIONS block (labels stay English so the
+    downstream parser still works). Raises if the English text can't be parsed
+    or NLLB fails — the caller then falls back to the Groq translator.
+    """
+    from app.services import hf_translate
+
+    title, body, actions = _split_advisory_text(english_text)
+    if not title and not body:
+        raise RuntimeError("Could not parse English advisory for NLLB translation")
+
+    fields = [title, body, *actions]
+    translated = await hf_translate.translate_fields(fields, language)
+    t_title, t_body, t_actions = translated[0], translated[1], translated[2:]
+
+    lines = [f"TITLE: {t_title}", f"BODY: {t_body}", "ACTIONS:"]
+    lines += [f"- {a}" for a in t_actions]
+    return "\n".join(lines)
+
+
+async def _translate_with_groq(client, english_text: str, language: Language) -> str:
+    """Translate an English advisory into `language` via the Groq LLM."""
+    glossary = FLOOD_GLOSSARY.get(language, "")
+    translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
 RULES:
 1. Translate every word of the content. Do NOT leave any English words (like Thursday or Saturday) in the output.
 2. Keep all numbers as digits exactly as given (e.g. 50,000; 126%). Never spell them out.
 3. Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown. Only translate the text after them.
 4. IMPORTANT VOCABULARY TO USE strictly (failure to use these is life-threatening): {glossary}
 """
-        if language == Language.OROMO:
-            translate_prompt += """
+    if language == Language.OROMO:
+        translate_prompt += """
 Example translation for Oromo:
 English:
 TITLE: Flood Warning — Omo River (High Level)
@@ -213,34 +306,19 @@ BODY: Dhangala'iinsi Laga Omoo %126 gahee, guyyaa tokko keessatti daangaa lolaa 
 ACTIONS:
 - Bidiruuwwanii fi ambulaansota dursanii qopheessaa.
 """
-        translate_prompt += f"""
+    translate_prompt += f"""
 
 Source Advisory in English:
 {english_text}"""
-        
-        response_tl = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=settings.groq_model,
-            messages=[{"role": "user", "content": translate_prompt}],
-            max_tokens=1024,
-            temperature=0.3,
-        )
-        final_text = response_tl.choices[0].message.content.strip()
-        
-        # STEP 3: Verification Layer
-        if language == Language.OROMO:
-            if "dhihaa" in final_text.lower() or "olola" in final_text.lower():
-                # Failsafe simple replace to prevent catastrophic translation
-                final_text = final_text.replace("dhihaa", "lolaa").replace("Dhihaa", "Lolaa")
-                final_text = final_text.replace("olola", "namoota").replace("Olola", "Namoota")
 
-    advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
-    
-    # Check for custom voice note or generate TTS
-    from app.services.voice import get_or_generate_voice_note
-    advisory = await get_or_generate_voice_note(advisory)
-        
-    return advisory
+    response_tl = await asyncio.to_thread(
+        client.chat.completions.create,
+        model=settings.groq_model,
+        messages=[{"role": "user", "content": translate_prompt}],
+        max_tokens=1024,
+        temperature=0.3,
+    )
+    return response_tl.choices[0].message.content.strip()
 
 
 def _parse_advisory_response(
