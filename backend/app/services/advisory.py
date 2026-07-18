@@ -60,6 +60,8 @@ ROLE_DESCRIPTIONS = {
     UserRole.PASTORALIST: "a pastoralist herder who moves livestock and depends on grazing land near the river",
     UserRole.COUNTY_OFFICER: "a county/district disaster management officer responsible for coordinating emergency response",
     UserRole.COMMUNITY_LEADER: "a village/community leader responsible for informing and organizing their community",
+    UserRole.TEACHER: "a school teacher or headmaster responsible for the safety of students and school property",
+    UserRole.STUDENT: "a student or young person living near the river",
     UserRole.GENERAL: "a resident living near the river floodplain",
 }
 
@@ -481,6 +483,52 @@ def _generate_template_advisory(
                 "Arifu vituo vya afya kujiandaa kwa magonjwa ya maji",
                 "Wasiliana na ICPAC na mamlaka ya kitaifa ya maafa",
                 "Toa ushauri wa umma kupitia redio za FM na viongozi wa jamii",
+            ],
+        },
+        UserRole.TEACHER: {
+            Language.ENGLISH: [
+                "Dismiss students early so they can walk home safely before waters rise",
+                "Move school records, books, and computers to the highest floor or shelves",
+                f"Keep children away from the {river_name} and flooded drainage ditches",
+                "Communicate with parents about emergency pickup points",
+                "Turn off main electricity switches before leaving the school building",
+            ],
+            Language.SOMALI: [
+                "Ardayda xilli hore sii daa si ay ammaan ugu gaaraan guryahooda",
+                "Diiwaanka iskuulka, buugaagta, iyo kombiyuutarada gee dabaqa ugu sarreeya",
+                f"Carruurta ka fogee {river_name} iyo meelaha daadku maro",
+                "Waalidiinta la socodsii meelaha carruurta loogu yimaado xilliga gurmadka",
+                "Dami korontada guud ee iskuulka inta aadan bixin",
+            ],
+            Language.SWAHILI: [
+                "Waruhusu wanafunzi waende nyumbani mapema kabla ya maji kupanda",
+                "Hamishia rekodi za shule, vitabu, na kompyuta kwenye ghorofa ya juu au rafu za juu",
+                f"Waweke watoto mbali na {river_name} na mitaro iliyofurika",
+                "Wasiliana na wazazi kuhusu maeneo salama ya kuwachukua watoto",
+                "Zima swichi kuu ya umeme kabla ya kuondoka shuleni",
+            ],
+        },
+        UserRole.STUDENT: {
+            Language.ENGLISH: [
+                "Walk home in groups and do not stop to play near the floodwaters",
+                f"Never try to cross the {river_name} or flooded roads — water is stronger than it looks",
+                "Tell your parents or teacher immediately if you see the water rising quickly",
+                "Help carry important light items like documents when your family moves",
+                "Stay on high ground and do not drink or swim in floodwater",
+            ],
+            Language.SOMALI: [
+                "Idinkoo koox ah guryaha aada oo ha ku ciyaarina biyaha daadka agtooda",
+                f"Weligaa ha isku dayin inaad ka gudubto {river_name} — biyuhu way ka xoog badan yihiin sida ay u muuqdaan",
+                "Isla markiiba u sheeg waalidkaa ama macalinkaaga haddii aad aragto biyaha oo kor u kacaya",
+                "Caawi qoyskaaga inaad qaado waraaqaha muhiimka ah marka aad guuraysaan",
+                "Dhul sare joog oo ha cabin hana ku dabbaalan biyaha daadka",
+            ],
+            Language.SWAHILI: [
+                "Tembeeni kwa vikundi kwenda nyumbani na msicheze karibu na mafuriko",
+                f"Usijaribu kuvuka {river_name} — maji yana nguvu sana",
+                "Mjulishe mzazi au mwalimu mara moja ukiona maji yakipanda haraka",
+                "Saidia kubeba vitu vyepesi na muhimu wakati familia inahama",
+                "Kaa kwenye ardhi ya juu na usinywe wala kuogelea kwenye maji ya mafuriko",
             ],
         },
         UserRole.GENERAL: {
