@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { fetchBasins, fetchForecast, fetchReports, resolveAssetUrl } from '@/lib/api';
+import { fetchBasins, fetchForecast, fetchAdvisory, fetchReports, resolveAssetUrl } from '@/lib/api';
 import {
   RISK_COLORS,
   MAP_CENTER,
@@ -107,6 +107,29 @@ export default function Dashboard() {
       const data = await fetchForecast(basin.id, roleRef.current, languageRef.current);
       if (reqId === forecastReqId.current) {
         setForecast(data);
+      }
+      // Some backend builds don't embed the advisory in the forecast payload.
+      // When it's missing, pull it from the dedicated advisory endpoint and
+      // patch it in, so the advisory card always renders. Still gated by reqId
+      // so a stale basin's advisory can't overwrite a newer selection.
+      if (!data.advisory) {
+        try {
+          const adv = await fetchAdvisory(
+            basin.id,
+            roleRef.current,
+            languageRef.current
+          );
+          if (reqId === forecastReqId.current && adv?.advisory) {
+            setForecast((prev) =>
+              prev && prev.basin?.id === basin.id
+                ? { ...prev, advisory: adv.advisory }
+                : prev
+            );
+          }
+        } catch (advErr) {
+          // Non-fatal — the rest of the forecast still shows.
+          console.error('Failed to load advisory fallback:', advErr);
+        }
       }
     } catch (err) {
       console.error('Failed to load forecast:', err);
@@ -257,15 +280,26 @@ export default function Dashboard() {
           ? `${(basin.flood_probability * 100).toFixed(0)}%`
           : '—';
 
+      // Outer element: MapLibre owns its `transform` to position the marker on
+      // the map. We must NOT write to el.style.transform ourselves — doing so
+      // wipes out MapLibre's translate() and the marker jumps to the map's
+      // top-left corner. So the hover animation lives on an inner node instead.
       const el = document.createElement('div');
       el.style.cssText = `
         width: 36px;
         height: 36px;
+        cursor: pointer;
+      `;
+      el.title = basin.name;
+
+      const inner = document.createElement('div');
+      inner.style.cssText = `
+        width: 100%;
+        height: 100%;
         border-radius: 50%;
         background: ${riskColor};
         border: 2px solid #ffffff;
         box-shadow: 0 1px 3px rgba(35,33,28,0.35);
-        cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -273,16 +307,20 @@ export default function Dashboard() {
         font-size: 11px;
         font-weight: 600;
         color: #ffffff;
-        transition: transform 140ms ease;
+        transition: transform 140ms ease, box-shadow 140ms ease;
       `;
-      el.textContent = prob;
-      el.title = basin.name;
+      inner.textContent = prob;
+      el.appendChild(inner);
 
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.1)';
+        inner.style.transform = 'scale(1.15)';
+        inner.style.boxShadow = '0 3px 8px rgba(35,33,28,0.45)';
+        el.style.zIndex = '10';
       });
       el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)';
+        inner.style.transform = 'scale(1)';
+        inner.style.boxShadow = '0 1px 3px rgba(35,33,28,0.35)';
+        el.style.zIndex = '';
       });
       el.addEventListener('click', () => selectBasin(basin));
 
