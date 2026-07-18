@@ -24,7 +24,9 @@ Future<void> main() async {
   if (supabaseUrl.isNotEmpty && supabaseKey.isNotEmpty) {
     await Supabase.initialize(
       url: supabaseUrl,
-      anonKey: supabaseKey,
+      // Newer Supabase projects call this the "publishable" key (anon is the
+      // deprecated alias). Both are the same public client key.
+      publishableKey: supabaseKey,
     );
   }
 

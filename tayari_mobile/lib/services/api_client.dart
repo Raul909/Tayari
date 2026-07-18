@@ -22,7 +22,12 @@ class ApiClient {
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
   )) {
-    _dio.interceptors.add(LogInterceptor());
+    // Log request/response only in debug builds. In the release APK this would
+    // spend cycles stringifying every request and leak advisory/report payloads
+    // into logcat for no benefit.
+    if (!kReleaseMode) {
+      _dio.interceptors.add(LogInterceptor(requestBody: true, responseBody: true));
+    }
   }
 
   /// The deployed backend. Release builds (the distributed APK) always target
