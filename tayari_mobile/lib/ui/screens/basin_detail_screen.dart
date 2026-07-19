@@ -134,13 +134,24 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
                       .withValues(alpha: 0.08),
                   borderColor: AppColors.risk(forecast.riskLevel)
                       .withValues(alpha: 0.4),
-                  child: Text(
-                    advisory ??
-                        (_syncing
-                            ? 'Fetching the advisory…'
-                            : 'This advisory is not cached offline for the selected '
-                                'language and audience yet. Connect and it will download.'),
-                    style: const TextStyle(fontSize: 15, height: 1.55),
+                  // Arabic advisories read right-to-left. Detect the script in
+                  // the text itself rather than trusting selectedLanguage: the
+                  // backend can deliver Arabic as the fallback for a language
+                  // it can't write (e.g. Dinka), and cached text carries no
+                  // language metadata.
+                  child: Directionality(
+                    textDirection: advisory != null &&
+                            RegExp(r'[؀-ۿ]').hasMatch(advisory)
+                        ? TextDirection.rtl
+                        : TextDirection.ltr,
+                    child: Text(
+                      advisory ??
+                          (_syncing
+                              ? 'Fetching the advisory…'
+                              : 'This advisory is not cached offline for the selected '
+                                  'language and audience yet. Connect and it will download.'),
+                      style: const TextStyle(fontSize: 15, height: 1.55),
+                    ),
                   ),
                 ),
                 if (advisory != null) ...[

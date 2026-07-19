@@ -150,3 +150,24 @@ class ChatMemoryORM(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class AdvisoryCacheORM(Base):
+    """
+    A generated advisory, persisted so the cache survives restarts.
+
+    The in-memory cache in ``advisory.py`` is wiped every time the process
+    restarts — which on the free Render tier is at least daily (overnight
+    spin-down). Persisting the AI-generated advisories means a cold-started
+    backend can serve the last known good advisory instantly instead of paying
+    the full two-step LLM pipeline again, and can fall back to a stale-but-sane
+    advisory if the LLM is unreachable. Keyed by the same
+    ``basin_riskLevel_role_language`` string as the in-memory cache, so an
+    entry is only ever reused for the risk level it was written for.
+    """
+
+    __tablename__ = "advisory_cache"
+
+    cache_key: Mapped[str] = mapped_column(String(160), primary_key=True)
+    advisory_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

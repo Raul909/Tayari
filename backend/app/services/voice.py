@@ -1,83 +1,109 @@
+"""
+Voice notes for advisories — spoken warnings for readers who can't read them.
+
+TTS history: this originally used Meta MMS-TTS on the classic HF Inference API.
+That host was decommissioned, and (verified 2026-07-19) **no** HF inference
+provider serves the ``facebook/mms-tts-*`` models through the router either —
+their ``inferenceProviderMapping`` is empty. So HF-based TTS cannot work at all.
+
+Current implementation: **Groq's TTS models** (``playai-tts`` for English and
+``playai-tts-arabic`` for Arabic) through the same Groq account that already
+writes the advisories. Languages without a working TTS voice keep
+``requires_recording=True`` so a community mother-tongue recording can be
+attached instead — a wrong-language robot voice would be worse than none.
+
+Audio files are named by content hash, so re-generating the same advisory
+(cache refresh every 6 h) reuses the existing file instead of paying for a new
+synthesis.
+"""
+
 import asyncio
+import hashlib
 import logging
 import os
-import uuid
 from pathlib import Path
 
 import requests
 
-from app.models.schemas import Advisory, Language, LOW_RESOURCE_LANGUAGES
+from app.models.schemas import Advisory, Language
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Mapping Tayari Language enums to Meta MMS-TTS models on Hugging Face
-HF_TTS_MODELS = {
-    Language.ENGLISH: "facebook/mms-tts-eng",
-    Language.SOMALI: "facebook/mms-tts-som",
-    Language.SWAHILI: "facebook/mms-tts-swh",
-    Language.AMHARIC: "facebook/mms-tts-amh",
-    Language.ARABIC: "facebook/mms-tts-ara",
-    Language.OROMO: "facebook/mms-tts-orm",
+# Language → (Groq TTS model, voice). Only languages Groq actually speaks.
+GROQ_TTS_MODELS = {
+    Language.ENGLISH: ("playai-tts", "Fritz-PlayAI"),
+    Language.ARABIC: ("playai-tts-arabic", "Ahmad-PlayAI"),
 }
 
-# In-memory ephemeral cache mapping session/alert IDs to temporary files
-_AUDIO_CACHE = {}
+GROQ_TTS_URL = "https://api.groq.com/openai/v1/audio/speech"
+_TIMEOUT_SECONDS = 30
+
+_STATIC_AUDIO_DIR = Path("static/audio")
+
 
 async def get_or_generate_voice_note(advisory: Advisory) -> Advisory:
     """
-    Determines if the advisory requires manual recording or if we can use
-    the Hugging Face Inference API to generate a TTS voice note ephemerally.
+    Attach a synthesized voice note to the advisory when a TTS voice exists for
+    its language; otherwise flag it as needing a human recording.
     """
-    if advisory.language in LOW_RESOURCE_LANGUAGES:
+    tts = GROQ_TTS_MODELS.get(advisory.language)
+    if tts is None or not settings.groq_api_key:
         advisory.requires_recording = True
         advisory.voice_note_url = None
         return advisory
-        
-    model_id = HF_TTS_MODELS.get(advisory.language, "facebook/mms-tts-eng")
-    
-    text_to_speak = f"{advisory.title}. {advisory.body}. " + " ".join(advisory.actions)
-    
-    # We use a thread to make the sync requests call non-blocking
+
+    model, voice = tts
+    text_to_speak = f"{advisory.title}. {advisory.body} " + ". ".join(advisory.actions)
+
+    # Content-addressed filename: identical advisory text → identical file, so
+    # cache refreshes and repeated requests never re-synthesize.
+    digest = hashlib.sha1(
+        f"{advisory.language}|{text_to_speak}".encode("utf-8")
+    ).hexdigest()[:20]
+    filename = f"voice_{digest}.wav"
+    filepath = _STATIC_AUDIO_DIR / filename
+
     try:
-        audio_bytes = await asyncio.to_thread(_call_hf_inference, model_id, text_to_speak)
-        if audio_bytes:
-            # Store ephemerally in a temp file and serve statically, or just keep in cache
-            # For this prototype, we'll write to a temp dir in static/audio
-            static_dir = Path("static/audio")
-            static_dir.mkdir(parents=True, exist_ok=True)
-            
-            filename = f"voice_{uuid.uuid4().hex}.wav"
-            filepath = static_dir / filename
+        if not filepath.exists():
+            audio_bytes = await asyncio.to_thread(
+                _call_groq_tts, model, voice, text_to_speak
+            )
+            _STATIC_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
             with open(filepath, "wb") as f:
                 f.write(audio_bytes)
-                
-            # Normally this would be a full URL, relative path is fine for the prototype
-            # as long as the backend serves /static
-            advisory.voice_note_url = f"/static/audio/{filename}"
-            advisory.requires_recording = False
+
+        # Relative path is fine for the prototype: the backend serves /static.
+        advisory.voice_note_url = f"/static/audio/{filename}"
+        advisory.requires_recording = False
     except Exception as e:
         logger.warning(f"TTS generation failed, will require manual recording: {e}")
-        # Fallback to requiring recording if TTS fails
         advisory.requires_recording = True
         advisory.voice_note_url = None
 
     return advisory
 
-def _call_hf_inference(model_id: str, text: str) -> bytes:
-    api_url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
-    # Use HF token if provided in environment, otherwise it might fail/rate limit
-    headers = {}
-    hf_token = (
-        os.environ.get("HF_API_TOKEN")
-        or os.environ.get("HF_TOKEN")
-        or getattr(settings, "hf_api_token", None)
+
+def _call_groq_tts(model: str, voice: str, text: str) -> bytes:
+    """One synthesis call against Groq's OpenAI-compatible speech endpoint."""
+    response = requests.post(
+        GROQ_TTS_URL,
+        headers={
+            "Authorization": f"Bearer {settings.groq_api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "voice": voice,
+            # Groq caps TTS input at 10K chars; advisories are far shorter, but
+            # guard anyway so an outlier degrades to a truncated note, not a 400.
+            "input": text[:9500],
+            "response_format": "wav",
+        },
+        timeout=_TIMEOUT_SECONDS,
     )
-    if hf_token:
-        headers["Authorization"] = f"Bearer {hf_token}"
-        
-    response = requests.post(api_url, headers=headers, json={"inputs": text})
-    if response.status_code == 200:
-        return response.content
-    else:
-        raise Exception(f"HF API returned {response.status_code}: {response.text}")
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Groq TTS returned {response.status_code}: {response.text[:200]}"
+        )
+    return response.content

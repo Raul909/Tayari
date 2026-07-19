@@ -9,7 +9,7 @@ closing the gap between information generated and information acted upon.
 import asyncio
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.config import settings
@@ -93,6 +93,46 @@ _FORBIDDEN_SCRIPT = re.compile(
     "]"
 )
 
+# Writing system each language is actually written in. The general LLM has
+# produced Ge'ez-script pseudo-Tigrinya when asked for Afar (a Latin-script
+# language) — unreadable to the intended audience — so the script itself is a
+# strong, deterministic correctness signal.
+_SCRIPT_FAMILIES = {
+    "latin": re.compile(r"[A-Za-zÀ-ɏɐ-ʯḀ-ỿ]"),
+    "arabic": re.compile(r"[؀-ۿݐ-ݿࢠ-ࣿ]"),
+    "ethiopic": re.compile(r"[ሀ-᎟ⶀ-⷟]"),
+}
+_EXPECTED_SCRIPT = {
+    Language.AMHARIC: "ethiopic",
+    Language.ARABIC: "arabic",
+    # Everything else Tayari serves — including Afar, Daasanach, Dinka, Luhya,
+    # Turkana, Oromo, Somali, Swahili — is written in Latin script.
+}
+
+# Where the model demonstrably cannot write a language at all (Daasanach came
+# back as bare punctuation, Afar as wrong-script gibberish), retrying won't
+# help — no amount of prompting teaches a model a language it has no data for.
+# Instead we deliver the advisory in the basin's regional lingua franca, which
+# the model handles well and the community actually reads. An unreadable
+# "translation" in a flood warning is worse than a readable second language.
+FALLBACK_LANGUAGE = {
+    Language.DAASANACH: Language.AMHARIC,   # lower Omo → Ethiopia
+    Language.AFAR: Language.AMHARIC,        # Awash → Ethiopia
+    Language.LUHYA: Language.SWAHILI,       # Nzoia / Budalangi → Kenya
+    Language.TURKANA: Language.SWAHILI,     # Lake Turkana shore → Kenya
+    Language.DINKA: Language.ARABIC,        # White Nile / Bor → Juba Arabic
+}
+
+
+class TranslationQualityError(RuntimeError):
+    """Raised when a translation is unusable even after a corrective retry."""
+
+    def __init__(self, language: Language, leaks: list[str]):
+        super().__init__(f"unusable translation into {language}: {leaks[:8]}")
+        self.language = language
+        self.leaks = leaks
+
+
 # Distinctive English words that should never survive translation into another
 # language. Used ONLY to decide whether to retry (never to strip), so an
 # occasional false positive costs one extra API call, not a corrupted advisory.
@@ -106,22 +146,75 @@ _ENGLISH_LEAK_WORDS = frozenset({
 _LABELS_RE = re.compile(r"^\s*(TITLE|BODY|ACTIONS)\s*:", re.IGNORECASE | re.MULTILINE)
 
 
-def _translation_leaks(text: str, language: Language) -> list[str]:
-    """
-    Return the offending tokens if `text` looks like a bad translation into
-    `language`, or an empty list if it looks clean.
+# Eastern Arabic-Indic digits — an Arabic translation may legitimately render
+# "95" as "٩٥", so digits are normalized before the preservation check.
+_EASTERN_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
-    Two signals: (1) any character from a forbidden script, and (2) distinctive
-    English words surviving in the content (the English TITLE/BODY/ACTIONS labels
-    are stripped first, since we keep those on purpose as parsing markers).
+
+def _digit_groups(text: str) -> set[str]:
+    """
+    Normalized digit groups ("100,000" → "100000") for number preservation.
+    Handles Eastern Arabic-Indic digits and the Arabic thousands/decimal
+    separators (U+066C/U+066B), so "١٠٠٬٠٠٠" equals "100,000".
+    """
+    normalized = text.translate(_EASTERN_DIGITS)
+    return {re.sub(r"[,.٫٬  ]", "", g)
+            for g in re.findall(r"\d[\d,.٫٬  ]*", normalized)}
+
+
+def _translation_leaks(
+    text: str, language: Language, english_source: Optional[str] = None
+) -> tuple[list[str], list[str]]:
+    """
+    Inspect a translation into `language` and return `(hard, soft)` problem
+    lists — both empty when the text looks clean.
+
+    HARD problems mean the text is unusable and retrying is pointless (the model
+    simply can't write this language): the content is written in the wrong
+    script, or it has almost no words at all (Daasanach came back as bare
+    punctuation). The caller should fall back to another language.
+
+    SOFT problems are fixable blemishes worth one corrective retry: characters
+    from a script no Tayari language uses, distinctive English words surviving
+    in the content, or numbers from the source that went missing. The English
+    TITLE/BODY/ACTIONS labels are stripped first — those stay by design.
+
     English targets are never flagged — there is nothing to translate into.
     """
     if language == Language.ENGLISH:
-        return []
-    problems = sorted(set(_FORBIDDEN_SCRIPT.findall(text)))
-    content = _LABELS_RE.sub("", text).lower()
-    english = {w for w in re.findall(r"[a-z]{3,}", content) if w in _ENGLISH_LEAK_WORDS}
-    return problems + sorted(english)
+        return [], []
+
+    content = _LABELS_RE.sub("", text)
+    hard: list[str] = []
+    soft: list[str] = []
+
+    # Script census over the content's letters.
+    counts = {fam: len(rx.findall(content)) for fam, rx in _SCRIPT_FAMILIES.items()}
+    total_letters = sum(counts.values())
+    expected = _EXPECTED_SCRIPT.get(language, "latin")
+
+    if english_source is not None:
+        src_letters = len(re.findall(r"[A-Za-z]", _LABELS_RE.sub("", english_source)))
+        # A real translation has letters in the same order of magnitude as its
+        # source. Bare punctuation/digits (what "Daasanach" actually produced)
+        # falls far below any reasonable floor.
+        if src_letters >= 80 and total_letters < 0.2 * src_letters:
+            hard.append(f"(content-missing: {total_letters} letters for a {src_letters}-letter source)")
+
+    if total_letters >= 20:
+        wrong = total_letters - counts[expected]
+        if wrong > 0.3 * total_letters:
+            hard.append(f"(wrong-script: {counts} but {language} is written in {expected})")
+
+    soft += sorted(set(_FORBIDDEN_SCRIPT.findall(text)))
+    lowered = content.lower()
+    soft += sorted({w for w in re.findall(r"[a-z]{3,}", lowered) if w in _ENGLISH_LEAK_WORDS})
+
+    if english_source is not None:
+        missing = _digit_groups(english_source) - _digit_groups(text)
+        soft += [f"(number dropped: {n})" for n in sorted(missing)]
+
+    return hard, soft
 
 
 def _sanitize_translation(text: str, language: Language) -> str:
@@ -165,12 +258,22 @@ async def generate_advisory(
     Returns:
         Advisory with title, body, and specific actions
     """
-    # Check cache
+    # Check the in-memory cache first (fastest), then the database-backed one —
+    # the memory cache dies with every restart, and on the free Render tier the
+    # process restarts at least daily, so without the DB layer every morning's
+    # first user would pay the full two-step LLM pipeline per language and role.
     cache_key = f"{risk.basin_id}_{risk.risk_level}_{role}_{language}"
     if cache_key in _advisory_cache:
         cached_advisory, cached_time = _advisory_cache[cache_key]
         if datetime.utcnow() - cached_time < timedelta(hours=CACHE_TTL_HOURS):
             return cached_advisory
+
+    persisted = await _load_persisted_advisory(cache_key)
+    if persisted is not None:
+        advisory_db, age = persisted
+        if age < timedelta(hours=CACHE_TTL_HOURS):
+            _advisory_cache[cache_key] = (advisory_db, datetime.utcnow() - age)
+            return advisory_db
 
     # Try Groq API (fast LLM inference)
     if HAS_GROQ and settings.groq_api_key:
@@ -179,9 +282,16 @@ async def generate_advisory(
                 risk, impact, basin_name, river_name, country, role, language
             )
             _advisory_cache[cache_key] = (advisory, datetime.utcnow())
+            await _store_persisted_advisory(cache_key, advisory)
             return advisory
         except Exception as e:
             logger.error(f"Groq advisory generation failed: {e}")
+            # Stale-if-error: a previously generated advisory for the SAME risk
+            # level (it's part of the key) beats a generic template. Capped at
+            # 7 days so we never serve something truly ancient.
+            if persisted is not None and persisted[1] < timedelta(days=7):
+                logger.warning(f"Serving stale persisted advisory for {cache_key}")
+                return persisted[0]
 
     # Fall back to templates
     advisory = _generate_template_advisory(
@@ -189,6 +299,53 @@ async def generate_advisory(
     )
     _advisory_cache[cache_key] = (advisory, datetime.utcnow())
     return advisory
+
+
+async def _load_persisted_advisory(
+    cache_key: str,
+) -> Optional[tuple[Advisory, timedelta]]:
+    """
+    Load an advisory from the database cache, returning it with its age, or
+    None. Any DB problem is swallowed — the cache is an accelerator, and a
+    broken table must never break advisory generation itself.
+    """
+    try:
+        from app.db import SessionLocal
+        from app.models.db_models import AdvisoryCacheORM
+
+        async with SessionLocal() as session:
+            row = await session.get(AdvisoryCacheORM, cache_key)
+            if row is None:
+                return None
+            advisory = Advisory.model_validate_json(row.advisory_json)
+            created = row.created_at
+            if created.tzinfo is None:  # SQLite returns naive datetimes
+                created = created.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - created
+            return advisory, age
+    except Exception as e:
+        logger.warning(f"Advisory DB cache read failed ({e}); ignoring")
+        return None
+
+
+async def _store_persisted_advisory(cache_key: str, advisory: Advisory) -> None:
+    """Upsert an AI-generated advisory into the database cache (best-effort)."""
+    if not advisory.ai_generated:
+        return  # templates are instant to regenerate; no point persisting them
+    try:
+        from app.db import SessionLocal
+        from app.models.db_models import AdvisoryCacheORM
+
+        async with SessionLocal() as session:
+            row = await session.get(AdvisoryCacheORM, cache_key)
+            if row is None:
+                row = AdvisoryCacheORM(cache_key=cache_key)
+                session.add(row)
+            row.advisory_json = advisory.model_dump_json()
+            row.created_at = datetime.now(timezone.utc)
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"Advisory DB cache write failed ({e}); ignoring")
 
 
 async def _generate_with_groq(
@@ -260,7 +417,12 @@ ACTIONS:
         temperature=0.7,
     )
     english_text = response_en.choices[0].message.content.strip()
-    
+
+    # The language the reader actually receives. Usually the requested one, but
+    # for languages the model provably cannot write (see FALLBACK_LANGUAGE) it
+    # becomes the basin's regional lingua franca rather than gibberish.
+    delivered = language
+
     if language == Language.ENGLISH:
         final_text = english_text
     else:
@@ -285,12 +447,33 @@ ACTIONS:
         # STEP 2b: Groq translation — the fallback, and the only path for
         # languages NLLB doesn't cover (Afar, Daasanach, Luhya, Turkana).
         if final_text is None:
-            final_text = await _translate_with_groq(client, english_text, language)
+            try:
+                final_text = await _translate_with_groq(client, english_text, language)
+            except TranslationQualityError as e:
+                # The model cannot write this language (e.g. Daasanach came back
+                # as bare punctuation, Afar as wrong-script gibberish). Deliver
+                # the basin's regional language instead — accurate and readable
+                # beats mother-tongue nonsense in a flood warning.
+                delivered = FALLBACK_LANGUAGE.get(language, Language.ENGLISH)
+                logger.warning(
+                    f"Unusable {language} translation ({e.leaks[:4]}); "
+                    f"delivering {delivered} instead"
+                )
+                if delivered == Language.ENGLISH:
+                    final_text = english_text
+                else:
+                    try:
+                        final_text = await _translate_with_groq(
+                            client, english_text, delivered
+                        )
+                    except TranslationQualityError:
+                        delivered = Language.ENGLISH
+                        final_text = english_text
 
         # STEP 3: Oromo safety net — applies to whichever translator ran, so a
         # catastrophic mistranslation ("dhihaa"=west, "olola"=propaganda) can
         # never reach the reader. Replaces are no-ops when the tokens are absent.
-        if language == Language.OROMO:
+        if delivered == Language.OROMO:
             final_text = (
                 final_text.replace("dhihaa", "lolaa").replace("Dhihaa", "Lolaa")
                 .replace("olola", "namoota").replace("Olola", "Namoota")
@@ -298,9 +481,9 @@ ACTIONS:
 
         # STEP 4: Final scrub — strip any forbidden-script glyph that slipped
         # through translation and the retry, guarding every path above at once.
-        final_text = _sanitize_translation(final_text, language)
+        final_text = _sanitize_translation(final_text, delivered)
 
-    advisory = _parse_advisory_response(final_text, risk, role, language, ai_generated=True)
+    advisory = _parse_advisory_response(final_text, risk, role, delivered, ai_generated=True)
     
     # Check for custom voice note or generate TTS
     from app.services.voice import get_or_generate_voice_note
@@ -369,14 +552,20 @@ async def _translate_with_groq(client, english_text: str, language: Language) ->
     all of these before the sanitizer (in the caller) catches the rest.
     """
     translated = await _run_groq_translation(client, english_text, language)
-    leaks = _translation_leaks(translated, language)
-    if leaks:
+    hard, soft = _translation_leaks(translated, language, english_source=english_text)
+    if hard or soft:
         logger.warning(
-            f"Groq translation into {language} leaked {leaks[:8]}; retrying stricter"
+            f"Groq translation into {language} leaked {(hard + soft)[:8]}; retrying stricter"
         )
         translated = await _run_groq_translation(
-            client, english_text, language, leaked=leaks
+            client, english_text, language, leaked=hard + soft
         )
+        hard, _ = _translation_leaks(translated, language, english_source=english_text)
+        # Soft blemishes after a retry are tolerated (the sanitizer still strips
+        # forbidden glyphs); a persistent HARD failure means the model cannot
+        # write this language and the caller must fall back.
+        if hard:
+            raise TranslationQualityError(language, hard)
     return translated
 
 

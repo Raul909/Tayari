@@ -24,6 +24,9 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
   if (!advisory) return null;
 
   const level = advisory.risk_level?.toLowerCase() || 'low';
+  // advisory.language is the language actually delivered (the backend may fall
+  // back from an unsupported mother tongue), so it decides the text direction.
+  const dir = advisory.language === 'ar' ? 'rtl' : undefined;
 
   async function handleSend(e) {
     e.preventDefault();
@@ -48,10 +51,10 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
 
   return (
     <div className={`advisory-card advisory-card--${level}`}>
-      <div className="advisory-title">{advisory.title}</div>
-      <div className="advisory-body">{advisory.body}</div>
+      <div className="advisory-title" dir={dir}>{advisory.title}</div>
+      <div className="advisory-body" dir={dir}>{advisory.body}</div>
       {advisory.actions && advisory.actions.length > 0 && (
-        <ul className="advisory-actions">
+        <ul className="advisory-actions" dir={dir}>
           {advisory.actions.map((action, i) => (
             <li key={i}>{action}</li>
           ))}

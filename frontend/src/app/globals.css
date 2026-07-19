@@ -584,6 +584,12 @@ a { color: inherit; }
   flex-shrink: 0;
 }
 
+/* Arabic advisories render right-to-left; flex order and alignment follow the
+   dir attribute natively, only the action arrow needs to point with the text. */
+.advisory-actions[dir="rtl"] li::before {
+  content: "←";
+}
+
 .advisory-ai-note {
   margin-top: 12px;
   padding-top: 10px;
