@@ -11,7 +11,8 @@ from app.limiter import limiter
 from app.db import get_session
 from app.models.db_models import UserProfileORM, SavedBasinORM, UserPrefsORM
 from app.models.schemas import (
-    UserProfile, UserPrefsResponse, UserPrefsUpdate, SavedBasinResponse
+    UserProfile, UserPrefsResponse, UserPrefsUpdate, SavedBasinResponse,
+    UserProfileUpdate,
 )
 from app.services.auth import get_current_user
 
@@ -32,20 +33,18 @@ async def get_my_profile(
 @limiter.limit("20/minute")
 async def update_my_profile(
     request: Request,
-    display_name: str | None = None,
-    preferred_role: str | None = None,
-    preferred_language: str | None = None,
+    update: UserProfileUpdate,
     user: UserProfileORM = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """Update profile information."""
-    if display_name is not None:
-        user.display_name = display_name
-    if preferred_role is not None:
-        user.preferred_role = preferred_role
-    if preferred_language is not None:
-        user.preferred_language = preferred_language
-    
+    if update.display_name is not None:
+        user.display_name = update.display_name
+    if update.preferred_role is not None:
+        user.preferred_role = update.preferred_role.value
+    if update.preferred_language is not None:
+        user.preferred_language = update.preferred_language.value
+
     await session.commit()
     await session.refresh(user)
     return user

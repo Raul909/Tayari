@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
 
 export default function AuthModal({ onClose }) {
@@ -10,12 +10,23 @@ export default function AuthModal({ onClose }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const { login, register, prefetch, resetPasswordForEmail } = useAuth();
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => { isMountedRef.current = false; }, []);
 
   // Warm the (lazily-loaded) Supabase SDK while the user is still typing, so
   // submitting doesn't wait on a cold import.
   useEffect(() => {
     prefetch?.();
   }, [prefetch]);
+
+  // Switching tabs (Sign In / Create Account / Forgot Password) should clear
+  // whatever error the previous attempt left behind — otherwise a failed
+  // login's error banner sits above an untouched registration form.
+  function changeView(next) {
+    setError(null);
+    setView(next);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -31,12 +42,12 @@ export default function AuthModal({ onClose }) {
         onClose();
       } else if (view === 'forgot_password') {
         await resetPasswordForEmail(email);
-        setView('reset_sent');
+        if (isMountedRef.current) setView('reset_sent');
       }
     } catch (err) {
-      setError(err.message || 'An error occurred');
+      if (isMountedRef.current) setError(err.message || 'An error occurred');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   }
 
@@ -46,13 +57,13 @@ export default function AuthModal({ onClose }) {
         <div className="auth-tabs">
           <button 
             className={`auth-tab ${view === 'login' ? 'active' : ''}`}
-            onClick={() => setView('login')}
+            onClick={() => changeView('login')}
           >
             Sign In
           </button>
           <button 
             className={`auth-tab ${view === 'register' ? 'active' : ''}`}
-            onClick={() => setView('register')}
+            onClick={() => changeView('register')}
           >
             Create Account
           </button>
@@ -71,7 +82,7 @@ export default function AuthModal({ onClose }) {
                 type="button" 
                 className="btn btn-secondary" 
                 style={{ width: '100%', marginTop: '20px' }}
-                onClick={() => setView('login')}
+                onClick={() => changeView('login')}
               >
                 Back to Sign In
               </button>
@@ -116,7 +127,7 @@ export default function AuthModal({ onClose }) {
                     <div style={{ textAlign: 'right', marginTop: '8px' }}>
                       <button 
                         type="button"
-                        onClick={() => setView('forgot_password')}
+                        onClick={() => changeView('forgot_password')}
                         style={{ 
                           background: 'none', border: 'none', padding: 0, 
                           color: 'var(--color-primary)', cursor: 'pointer', fontSize: '0.85rem' 
@@ -153,7 +164,7 @@ export default function AuthModal({ onClose }) {
                   type="button" 
                   className="btn btn-secondary" 
                   style={{ width: '100%', marginTop: '10px' }}
-                  onClick={() => setView('login')}
+                  onClick={() => changeView('login')}
                   disabled={loading}
                 >
                   Back to Sign In

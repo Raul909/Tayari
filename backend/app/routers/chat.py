@@ -21,10 +21,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 _basins_path = Path(__file__).parent.parent / "data" / "basins.json"
 
-# We reuse the limiter from main
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-limiter = Limiter(key_func=get_remote_address)
+# Shared limiter (same instance registered on app.state.limiter in main.py)
+from app.limiter import limiter
 
 def _get_basin_config(basin_id: str):
     from app.models.schemas import BasinConfig
@@ -68,10 +66,13 @@ async def chat_advisory(
     # Re-fetch data to provide context (in production, we'd cache this or pass it from frontend)
     from app.services.weather_data import fetch_upstream_rainfall # local import to prevent circular if any
 
-    discharge_data, rainfall_data = await asyncio.gather(
-        fetch_river_discharge(basin.gauge_point.latitude, basin.gauge_point.longitude, 3, 7),
-        fetch_upstream_rainfall(basin.upstream_point.latitude, basin.upstream_point.longitude, 3, 7)
-    )
+    try:
+        discharge_data, rainfall_data = await asyncio.gather(
+            fetch_river_discharge(basin.gauge_point.latitude, basin.gauge_point.longitude, 3, 7),
+            fetch_upstream_rainfall(basin.upstream_point.latitude, basin.upstream_point.longitude, 3, 7)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Data fetch error: {str(e)} ({type(e).__name__})")
 
     risk = compute_flood_risk(basin, discharge_data, rainfall_data)
     impact = compute_impact(basin_id, risk.risk_level)
@@ -101,30 +102,32 @@ User Role: {role_desc}
 
     messages = [{"role": "system", "content": system_prompt.strip()}]
     
-    # Load cross-session memories from DB
+    # Load cross-session memories from DB — best-effort context, not required.
     if chat_req.user_id:
-        stmt = (
-            select(ChatMemoryORM)
-            .where(ChatMemoryORM.user_id == chat_req.user_id)
-            .where(ChatMemoryORM.basin_id == basin_id)
-            .order_by(ChatMemoryORM.created_at.desc())
-            .limit(10)
-        )
-        result = await session.execute(stmt)
-        past_memories = result.scalars().all()
-        # Prepend to the session history in chronological order
-        for mem in reversed(past_memories):
-            messages.append({"role": mem.role, "content": mem.content})
+        try:
+            stmt = (
+                select(ChatMemoryORM)
+                .where(ChatMemoryORM.user_id == chat_req.user_id)
+                .where(ChatMemoryORM.basin_id == basin_id)
+                .order_by(ChatMemoryORM.created_at.desc())
+                .limit(10)
+            )
+            result = await session.execute(stmt)
+            past_memories = result.scalars().all()
+            # Prepend to the session history in chronological order
+            for mem in reversed(past_memories):
+                messages.append({"role": mem.role, "content": mem.content})
+        except Exception as e:
+            logger.warning(f"Chat memory lookup failed ({e}); continuing without it")
 
     for m in chat_req.session_messages:
         messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
     
     messages.append({"role": "user", "content": chat_req.message})
 
-    from groq import Groq
-    client = Groq(api_key=settings.groq_api_key)
-
     try:
+        from groq import Groq
+        client = Groq(api_key=settings.groq_api_key)
         response = await asyncio.to_thread(
             client.chat.completions.create,
             model=settings.groq_model,
@@ -137,22 +140,25 @@ User Role: {role_desc}
         logger.error(f"Groq API error during chat: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate chat response.")
 
-    # Save to memory
-    user_mem = ChatMemoryORM(
-        user_id=chat_req.user_id,
-        basin_id=basin_id,
-        role="user",
-        content=chat_req.message
-    )
-    asst_mem = ChatMemoryORM(
-        user_id=chat_req.user_id,
-        basin_id=basin_id,
-        role="assistant",
-        content=reply
-    )
-    session.add(user_mem)
-    session.add(asst_mem)
-    await session.commit()
+    # Save to memory — best-effort. A DB hiccup here shouldn't cost the user
+    # the reply they already got back from Groq.
+    try:
+        session.add(ChatMemoryORM(
+            user_id=chat_req.user_id,
+            basin_id=basin_id,
+            role="user",
+            content=chat_req.message
+        ))
+        session.add(ChatMemoryORM(
+            user_id=chat_req.user_id,
+            basin_id=basin_id,
+            role="assistant",
+            content=reply
+        ))
+        await session.commit()
+    except Exception as e:
+        logger.warning(f"Chat memory write failed ({e}); ignoring")
+        await session.rollback()
 
     return ChatResponse(
         reply=reply,

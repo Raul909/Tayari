@@ -1,12 +1,29 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
+import { useToast } from '@/components/Toast';
 import AuthModal from './AuthModal';
 
 export default function UserMenu() {
   const { user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const menuRef = useRef(null);
+  const { notify } = useToast();
+
+  // Close on outside click rather than mouseLeave — the dropdown sits a few
+  // pixels below the avatar, and mouseLeave fired while crossing that gap
+  // before a click could land on any option.
+  useEffect(() => {
+    if (!showDropdown) return;
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDropdown]);
 
   if (!user) {
     return (
@@ -22,7 +39,7 @@ export default function UserMenu() {
   const initial = (user.user_metadata?.display_name || user.email || '?').charAt(0).toUpperCase();
 
   return (
-    <div className="user-menu" onMouseLeave={() => setShowDropdown(false)}>
+    <div className="user-menu" ref={menuRef}>
       <div 
         className="user-avatar" 
         onClick={() => setShowDropdown(!showDropdown)}
@@ -41,10 +58,16 @@ export default function UserMenu() {
             </div>
           </div>
           
-          <button className="user-dropdown-item" onClick={() => alert('Saved basins (Coming soon)')}>
+          <button
+            className="user-dropdown-item"
+            onClick={() => notify({ type: 'info', title: 'Saved Basins', message: 'Coming soon.' })}
+          >
             Saved Basins
           </button>
-          <button className="user-dropdown-item" onClick={() => alert('Preferences (Coming soon)')}>
+          <button
+            className="user-dropdown-item"
+            onClick={() => notify({ type: 'info', title: 'Preferences', message: 'Coming soon.' })}
+          >
             Preferences
           </button>
           <button 

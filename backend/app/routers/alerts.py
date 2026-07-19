@@ -22,38 +22,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
 
 from app.db import get_session
-from app.models.db_models import AdviceORM, AlertORM, ReportORM
+from app.models.db_models import AdviceORM, AlertORM, ReportORM, UserProfileORM
 from app.models.schemas import (
     AdviceSubmission, AlertRecord, AlertRequest, AlertResponse,
     CommunityReport, ReportAdvice, ReportEdit, ReportStatus, ReportSubmission,
+    RiskLevel,
 )
 from app.services.advisory import generate_advisory
 from app.services.alerts import send_sms_alert
+from app.services.auth import get_current_user
 from app.services.flood_data import fetch_river_discharge
 from app.services.flood_model import compute_flood_risk
 from app.services.impact import compute_impact
 from app.services.weather_data import fetch_upstream_rainfall
-
-import jwt
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.config import settings
-
-security = HTTPBearer()
-
-async def verify_supabase_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    if not settings.supabase_jwt_secret:
-        return None # Auth disabled if no secret
-    try:
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated"
-        )
-        return payload
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid authentication credentials: {e}")
-
 
 import json
 
@@ -68,6 +49,23 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / "uploads" / "reports"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 _basins_path = Path(__file__).parent.parent / "data" / "basins.json"
+
+# One lock per basin serializes concurrent /alerts/send calls for that basin so
+# the 12-hour dedup check-then-act below can't race two simultaneous requests
+# into both queuing (and paying for) a duplicate Twilio SMS blast.
+_alert_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_alert_lock(basin_id: str) -> asyncio.Lock:
+    lock = _alert_locks.get(basin_id)
+    if lock is None:
+        lock = _alert_locks[basin_id] = asyncio.Lock()
+    return lock
+
+
+# Risk levels a sent AlertORM row can carry once fully processed — used to
+# filter out in-flight "PENDING" reservation rows from the public history feed.
+_TERMINAL_RISK_LEVELS = [r.value for r in RiskLevel]
 
 
 def _get_basin_config(basin_id: str):
@@ -110,56 +108,83 @@ def _to_report_schema(row: ReportORM) -> CommunityReport:
 # ─── Alert Endpoints ─────────────────────────────────────────────────────────
 
 @router.post("/alerts/send", response_model=AlertResponse, status_code=202)
+@limiter.limit("5/minute")
 async def send_alert(
-    request: AlertRequest,
+    request: Request,
+    alert_req: AlertRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    user_payload: dict = Depends(verify_supabase_jwt),
+    user: UserProfileORM = Depends(get_current_user),
 ):
     """
     Send an SMS alert for a basin (Load Balanced).
 
-    Checks the database to ensure we haven't already alerted this basin within
-    the last 12 hours (caching for safety to prevent SMS spam).
-    If clear, queues the heavy LLM and SMS network tasks to run in the background.
+    Requires a valid Supabase-authenticated user. Checks the database to
+    ensure we haven't already alerted (or started alerting) this basin within
+    the last 12 hours (caching for safety to prevent SMS spam and duplicate
+    Twilio charges). If clear, reserves the dedup slot immediately and queues
+    the heavy LLM and SMS network tasks to run in the background.
     """
-    basin = _get_basin_config(request.basin_id)
-    
-    # 1. Caching / Safety Check: Has an alert been sent in the last 12 hours?
-    stmt = select(AlertORM).where(
-        AlertORM.basin_id == request.basin_id,
-        AlertORM.risk_level.in_(["HIGH", "EXTREME"]) # Only check for high risk/extreme floods
-    ).order_by(AlertORM.id.desc()).limit(1)
-    
-    recent_alert = (await session.scalars(stmt)).first()
-    if recent_alert:
-        # Check time difference
-        time_since = datetime.now(recent_alert.sent_at.tzinfo) - recent_alert.sent_at
-        if time_since.total_seconds() < 12 * 3600:
-            return AlertResponse(
-                success=True,
-                message="Alert skipped: An alert was already sent for this basin within the last 12 hours.",
-                sms_count=0
-            )
+    basin = _get_basin_config(alert_req.basin_id)
 
-    # 2. Queue Background Task
+    # A per-basin lock closes the gap between the dedup check and reserving the
+    # slot below — without it, two near-simultaneous requests could both read
+    # "no recent alert" and both queue a duplicate SMS blast.
+    async with _get_alert_lock(alert_req.basin_id):
+        stmt = select(AlertORM).where(
+            AlertORM.basin_id == alert_req.basin_id,
+            # HIGH/EXTREME = a completed send; PENDING = one currently in flight.
+            AlertORM.risk_level.in_(["HIGH", "EXTREME", "PENDING"]),
+        ).order_by(AlertORM.id.desc()).limit(1)
+
+        recent_alert = (await session.scalars(stmt)).first()
+        if recent_alert:
+            if recent_alert.risk_level == "PENDING":
+                return AlertResponse(
+                    success=True,
+                    message="Alert skipped: a send for this basin is already in progress.",
+                    sms_count=0,
+                )
+            time_since = datetime.now(recent_alert.sent_at.tzinfo) - recent_alert.sent_at
+            if time_since.total_seconds() < 12 * 3600:
+                return AlertResponse(
+                    success=True,
+                    message="Alert skipped: An alert was already sent for this basin within the last 12 hours.",
+                    sms_count=0
+                )
+
+        # Reserve the dedup slot synchronously, before queuing the background
+        # task, so a concurrent request sees it immediately (see PENDING check above).
+        pending = AlertORM(
+            basin_id=alert_req.basin_id,
+            risk_level="PENDING",
+            role=alert_req.role.value,
+            language=alert_req.language.value,
+            recipients_count=len(alert_req.phone_numbers),
+            advisory_text="",
+        )
+        session.add(pending)
+        await session.commit()
+        await session.refresh(pending)
+
     background_tasks.add_task(
         _process_and_send_alert,
-        request=request,
-        basin=basin
+        request=alert_req,
+        basin=basin,
+        alert_row_id=pending.id,
     )
-    
+
     return AlertResponse(
         success=True,
         message="Alert processing queued successfully.",
-        sms_count=len(request.phone_numbers)
+        sms_count=len(alert_req.phone_numbers)
     )
 
-async def _process_and_send_alert(request: AlertRequest, basin):
+async def _process_and_send_alert(request: AlertRequest, basin, alert_row_id: int):
     """Background task to generate advisory and send SMS."""
     # We need a new DB session since this runs in the background
     from app.db import SessionLocal
-    
+
     try:
         # Generate the advisory — fetch both data feeds concurrently
         discharge_data, rainfall_data = await asyncio.gather(
@@ -197,20 +222,23 @@ async def _process_and_send_alert(request: AlertRequest, basin):
         # Deliver via Twilio (or simulate if Twilio isn't configured)
         await send_sms_alert(sms_text, request.phone_numbers)
 
-        # Record alert to the database
+        # Resolve the PENDING reservation into the completed alert record.
         async with SessionLocal() as session:
-            session.add(AlertORM(
-                basin_id=request.basin_id,
-                risk_level=risk.risk_level.value,
-                role=request.role.value,
-                language=request.language.value,
-                recipients_count=len(request.phone_numbers),
-                advisory_text=sms_text,
-            ))
-            await session.commit()
-            
+            row = await session.get(AlertORM, alert_row_id)
+            if row is not None:
+                row.risk_level = risk.risk_level.value
+                row.advisory_text = sms_text
+                await session.commit()
+
     except Exception as e:
         logger.error(f"Failed to process background alert for {basin.id}: {e}")
+        # Drop the PENDING reservation so a failed send doesn't permanently
+        # block future alerts for this basin.
+        async with SessionLocal() as session:
+            row = await session.get(AlertORM, alert_row_id)
+            if row is not None and row.risk_level == "PENDING":
+                await session.delete(row)
+                await session.commit()
 
 
 @router.get("/alerts/history", response_model=list[AlertRecord])
@@ -220,13 +248,14 @@ async def get_alert_history(
     session: AsyncSession = Depends(get_session),
 ):
     """Get the history of sent alerts (most recent last)."""
-    stmt = select(AlertORM)
+    from app.models.schemas import UserRole, Language
+
+    stmt = select(AlertORM).where(AlertORM.risk_level.in_(_TERMINAL_RISK_LEVELS))
     if basin_id:
         stmt = stmt.where(AlertORM.basin_id == basin_id)
     stmt = stmt.order_by(AlertORM.id.desc()).limit(limit)
 
     rows = list(reversed((await session.scalars(stmt)).all()))
-    from app.models.schemas import RiskLevel, UserRole, Language
     return [
         AlertRecord(
             id=r.id,
@@ -295,7 +324,13 @@ async def submit_report_with_photo(
     JPEG binary alongside the report fields in a single request.
     """
     # Validate status before we touch the disk or database.
-    status_enum = ReportStatus(status)
+    try:
+        status_enum = ReportStatus(status)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status '{status}'. Must be one of: {[s.value for s in ReportStatus]}",
+        )
 
     row = ReportORM(
         basin_id=basin_id,
@@ -345,7 +380,9 @@ async def get_reports(
 
 
 @router.patch("/reports/{report_id}", response_model=CommunityReport)
+@limiter.limit("10/minute")
 async def edit_report(
+    request: Request,
     report_id: int,
     edit: ReportEdit,
     session: AsyncSession = Depends(get_session),
@@ -376,7 +413,9 @@ async def edit_report(
 
 
 @router.delete("/reports/{report_id}", status_code=204)
+@limiter.limit("10/minute")
 async def delete_report(
+    request: Request,
     report_id: int,
     session: AsyncSession = Depends(get_session),
 ):
@@ -404,7 +443,9 @@ async def delete_report(
 
 
 @router.delete("/reports/{report_id}/advice/{advice_id}", response_model=CommunityReport)
+@limiter.limit("10/minute")
 async def delete_report_advice(
+    request: Request,
     report_id: int,
     advice_id: int,
     session: AsyncSession = Depends(get_session),
@@ -424,7 +465,9 @@ async def delete_report_advice(
 
 
 @router.post("/reports/{report_id}/advice", response_model=CommunityReport)
+@limiter.limit("10/minute")
 async def add_report_advice(
+    request: Request,
     report_id: int,
     advice: AdviceSubmission,
     session: AsyncSession = Depends(get_session),

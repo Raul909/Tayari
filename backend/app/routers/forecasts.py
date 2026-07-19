@@ -257,20 +257,23 @@ async def get_advisory(
     """
     basin = _get_basin(basin_id)
 
-    discharge_data, rainfall_data = await asyncio.gather(
-        fetch_river_discharge(
-            basin.gauge_point.latitude,
-            basin.gauge_point.longitude,
-            forecast_days=3,
-            past_days=7,
-        ),
-        fetch_upstream_rainfall(
-            basin.upstream_point.latitude,
-            basin.upstream_point.longitude,
-            forecast_days=3,
-            past_days=7,
-        ),
-    )
+    try:
+        discharge_data, rainfall_data = await asyncio.gather(
+            fetch_river_discharge(
+                basin.gauge_point.latitude,
+                basin.gauge_point.longitude,
+                forecast_days=3,
+                past_days=7,
+            ),
+            fetch_upstream_rainfall(
+                basin.upstream_point.latitude,
+                basin.upstream_point.longitude,
+                forecast_days=3,
+                past_days=7,
+            ),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Data fetch error: {str(e)} ({type(e).__name__})")
 
     risk = compute_flood_risk(basin, discharge_data, rainfall_data)
     impact = compute_impact(basin_id, risk.risk_level)

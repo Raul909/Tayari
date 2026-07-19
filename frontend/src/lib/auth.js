@@ -90,6 +90,10 @@ export function AuthProvider({ children }) {
         password,
         options: {
           data: { display_name: displayName },
+          // Without this, Supabase falls back to the project's dashboard
+          // "Site URL", which can be a stale localhost value from local dev
+          // — sending confirmation links to a dead address in production.
+          emailRedirectTo: window.location.origin,
         },
       });
       if (error) throw error;

@@ -5,13 +5,12 @@ import { sendAlert, fetchAlertHistory, fetchAdvisory, fetchBasins, resolveAssetU
 import { ROLES, LANGUAGES, LANGUAGE_LABELS } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
 import { getSupabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
+import AuthModal from '@/components/AuthModal';
 
 export default function AlertsPage() {
-  const [session, setSession] = useState(null);
-  const [loginPhone, setLoginPhone] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
+  const { user, loading: authLoading, logout } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const [basinsData, setBasinsData] = useState([]);
   const [basinId, setBasinId] = useState('shabelle');
@@ -30,6 +29,13 @@ export default function AlertsPage() {
   const [audioBlob, setAudioBlob] = useState(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  // Tracks the current locally-created blob: URL (from a manual recording) so
+  // it can be revoked the moment it's superseded, instead of pinning the audio
+  // in memory for the rest of the tab's life.
+  const localVoiceUrlRef = useRef(null);
+  // Monotonic token so a slow preview response can't overwrite a newer basin/
+  // role/language selection with stale SMS text.
+  const previewReqId = useRef(0);
 
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState([]);
@@ -37,28 +43,12 @@ export default function AlertsPage() {
   const { notify } = useToast();
 
   useEffect(() => {
-    // Restore the operator session; the Supabase SDK loads on demand.
-    let active = true;
-    let unsub = () => {};
-    getSupabase().then((supabase) => {
-      if (!active) return;
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (active) setSession(session);
-      });
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session);
-      });
-      unsub = () => subscription.unsubscribe();
-    });
-
     loadBasins();
     loadHistory();
-
     return () => {
-      active = false;
-      unsub();
+      if (localVoiceUrlRef.current) {
+        URL.revokeObjectURL(localVoiceUrlRef.current);
+      }
     };
   }, []);
 
@@ -79,20 +69,29 @@ export default function AlertsPage() {
   }
 
   async function loadPreview() {
+    const reqId = ++previewReqId.current;
     setPreviewLoading(true);
     setPreviewError(false);
     setAudioBlob(null);
     try {
       const data = await fetchAdvisory(basinId, role, language);
+      if (reqId !== previewReqId.current) return;
       setSmsPreview(data.sms_text || data.body || '');
       setRequiresRecording(data.requires_recording || false);
+      if (localVoiceUrlRef.current) {
+        URL.revokeObjectURL(localVoiceUrlRef.current);
+        localVoiceUrlRef.current = null;
+      }
       setVoiceNoteUrl(data.voice_note_url || null);
     } catch (err) {
       console.error('Failed to load preview:', err);
+      if (reqId !== previewReqId.current) return;
       setPreviewError(true);
       setSmsPreview('Could not generate a preview. Is the backend running?');
     } finally {
-      setPreviewLoading(false);
+      if (reqId === previewReqId.current) {
+        setPreviewLoading(false);
+      }
     }
   }
 
@@ -102,36 +101,6 @@ export default function AlertsPage() {
       setHistory(data);
     } catch (err) {
       console.error('Failed to load history:', err);
-    }
-  }
-
-  // Supabase Phone Auth
-  async function handleSendOtp() {
-    setAuthLoading(true);
-    const supabase = await getSupabase();
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: loginPhone,
-    });
-    setAuthLoading(false);
-    if (error) {
-      notify({ type: 'error', title: 'Login Error', message: error.message });
-    } else {
-      setOtpSent(true);
-      notify({ type: 'success', title: 'OTP Sent', message: 'Check your phone for the code.' });
-    }
-  }
-
-  async function handleVerifyOtp() {
-    setAuthLoading(true);
-    const supabase = await getSupabase();
-    const { error } = await supabase.auth.verifyOtp({
-      phone: loginPhone,
-      token: loginOtp,
-      type: 'sms',
-    });
-    setAuthLoading(false);
-    if (error) {
-      notify({ type: 'error', title: 'Verification Failed', message: error.message });
     }
   }
 
@@ -152,7 +121,11 @@ export default function AlertsPage() {
       mediaRecorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
+        if (localVoiceUrlRef.current) {
+          URL.revokeObjectURL(localVoiceUrlRef.current);
+        }
         const url = URL.createObjectURL(blob);
+        localVoiceUrlRef.current = url;
         setVoiceNoteUrl(url); // preview locally
       };
 
@@ -176,17 +149,32 @@ export default function AlertsPage() {
     return raw.split(',').map((p) => p.trim()).filter(Boolean);
   }
 
+  // Loose E.164 sanity check (+ then 8-15 digits) — just enough to catch typos
+  // and pasted-the-wrong-thing before they reach the backend/Twilio.
+  const PHONE_RE = /^\+[1-9]\d{7,14}$/;
+
   async function handleSend() {
     const phones = parsePhones(phoneNumber);
     if (phones.length === 0) {
       notify({ type: 'error', title: 'No recipients', message: 'Enter at least one phone number.' });
       return;
     }
-    
+    const invalid = phones.filter((p) => !PHONE_RE.test(p));
+    if (invalid.length > 0) {
+      notify({
+        type: 'error',
+        title: 'Invalid phone number',
+        message: `Use international format, e.g. +2521234567: ${invalid.join(', ')}`,
+      });
+      return;
+    }
+
     // In a real app, if audioBlob exists, we would upload it via FormData to a dedicated voice endpoint.
     // For this implementation, we just pass the token to sendAlert.
     setSending(true);
     try {
+      const supabase = await getSupabase();
+      const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const res = await sendAlert(basinId, role, language, phones, token);
       if (res.success) {
@@ -202,44 +190,25 @@ export default function AlertsPage() {
     }
   }
 
-  if (!session) {
+  if (authLoading) {
+    return <div className="loading-container" style={{ minHeight: '60vh' }} />;
+  }
+
+  if (!user) {
     return (
       <div className="page-container" style={{ maxWidth: 400, margin: '100px auto' }}>
         <div className="card">
-          <div className="card-header"><div className="card-title">Operator Login</div></div>
+          <div className="card-header"><div className="card-title">Sign In Required</div></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: 20 }}>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              Alert dispatch is secured. Enter your authorized phone number.
+              Alert dispatch is secured. Sign in with your Tayari account to continue.
             </p>
-            {!otpSent ? (
-              <>
-                <input
-                  className="form-input"
-                  type="text"
-                  placeholder="+254712345678"
-                  value={loginPhone}
-                  onChange={(e) => setLoginPhone(e.target.value)}
-                />
-                <button className="btn btn-primary" onClick={handleSendOtp} disabled={authLoading}>
-                  {authLoading ? 'Sending...' : 'Send OTP'}
-                </button>
-              </>
-            ) : (
-              <>
-                <input
-                  className="form-input"
-                  type="text"
-                  placeholder="123456"
-                  value={loginOtp}
-                  onChange={(e) => setLoginOtp(e.target.value)}
-                />
-                <button className="btn btn-primary" onClick={handleVerifyOtp} disabled={authLoading}>
-                  {authLoading ? 'Verifying...' : 'Login'}
-                </button>
-              </>
-            )}
+            <button className="btn btn-primary" onClick={() => setShowAuthModal(true)}>
+              Sign In
+            </button>
           </div>
         </div>
+        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
       </div>
     );
   }
@@ -256,7 +225,7 @@ export default function AlertsPage() {
           <h1 className="page-title">Alerts</h1>
           <p className="page-description">Generate and send multilingual flood advisories via Cloudflare SMS Workers.</p>
         </div>
-        <button className="btn" onClick={async () => (await getSupabase()).auth.signOut()}>Logout</button>
+        <button className="btn" onClick={logout}>Logout</button>
       </div>
 
       <div className="grid-2col">

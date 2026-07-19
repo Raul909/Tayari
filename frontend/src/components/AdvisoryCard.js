@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { sendChatMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -11,10 +11,14 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
   const [sending, setSending] = useState(false);
   const [messagesRemaining, setMessagesRemaining] = useState(5);
   const { user } = useAuth();
+  // Monotonic token so a reply for a basin the user has already navigated away
+  // from can't land in the chat thread of whatever basin is showing now.
+  const chatReqId = useRef(0);
 
   useEffect(() => {
     // Reset chat when advisory changes
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    chatReqId.current++;
     setMessages([]);
     setChatOpen(false);
     setMessagesRemaining(5);
@@ -31,7 +35,8 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
   async function handleSend(e) {
     e.preventDefault();
     if (!inputValue.trim() || sending || messagesRemaining <= 0) return;
-    
+
+    const reqId = chatReqId.current;
     const newMsg = { role: 'user', content: inputValue.trim() };
     const currentSession = [...messages];
     setMessages([...currentSession, newMsg]);
@@ -40,12 +45,18 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
 
     try {
       const res = await sendChatMessage(basinId, newMsg.content, role, language, currentSession, user?.id);
-      setMessages([...currentSession, newMsg, { role: 'ai', content: res.reply }]);
-      setMessagesRemaining(res.messages_remaining);
+      if (reqId === chatReqId.current) {
+        setMessages([...currentSession, newMsg, { role: 'ai', content: res.reply }]);
+        setMessagesRemaining(res.messages_remaining);
+      }
     } catch (err) {
-      setMessages([...currentSession, newMsg, { role: 'ai', content: 'Sorry, failed to get a response.' }]);
+      if (reqId === chatReqId.current) {
+        setMessages([...currentSession, newMsg, { role: 'ai', content: 'Sorry, failed to get a response.' }]);
+      }
     } finally {
-      setSending(false);
+      if (reqId === chatReqId.current) {
+        setSending(false);
+      }
     }
   }
 

@@ -198,7 +198,9 @@ class AlertRequest(BaseModel):
     basin_id: str
     role: UserRole = UserRole.GENERAL
     language: Language = Language.ENGLISH
-    phone_numbers: list[str] = Field(description="Phone numbers in international format")
+    phone_numbers: list[str] = Field(
+        min_length=1, max_length=500, description="Phone numbers in international format"
+    )
 
 
 class AlertResponse(BaseModel):
@@ -288,7 +290,9 @@ class ChatRequest(BaseModel):
     message: str = Field(max_length=500)
     role: UserRole = UserRole.GENERAL
     language: Language = Language.ENGLISH
-    session_messages: list[dict] = Field(default_factory=list, description="Prior [{role, content}] turns")
+    session_messages: list[dict] = Field(
+        default_factory=list, max_length=20, description="Prior [{role, content}] turns"
+    )
     user_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
@@ -320,3 +324,12 @@ class UserPrefsUpdate(BaseModel):
     sms_language: Optional[str] = None
     sms_role: Optional[str] = None
     notify_risk_level: Optional[str] = None
+
+
+class UserProfileUpdate(BaseModel):
+    """PUT /user/me body. Field constraints mirror the user_profiles DB columns
+    (display_name String(120), preferred_role String(32), preferred_language
+    String(8)) so a bad value 422s here instead of raising a DataError on commit."""
+    display_name: Optional[str] = Field(default=None, max_length=120)
+    preferred_role: Optional[UserRole] = None
+    preferred_language: Optional[Language] = None

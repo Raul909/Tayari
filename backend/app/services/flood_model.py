@@ -221,7 +221,8 @@ def compute_daily_probabilities(
 
         # Factor 2: Discharge trend (rising = more dangerous)
         trend = features.get("discharge_trend_3d", 0)
-        trend_factor = 1.0 + min(max(trend / basin.historical_median_m3s, -0.3), 0.3)
+        trend_ratio = trend / basin.historical_median_m3s if basin.historical_median_m3s > 0 else 0
+        trend_factor = 1.0 + min(max(trend_ratio, -0.3), 0.3)
 
         # Factor 3: Upstream rainfall (leading indicator — rain today = flood in 2-3 days)
         rain_factor = 1.0
