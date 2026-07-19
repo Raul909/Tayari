@@ -140,5 +140,14 @@ async def root(request: Request):
 
 @app.get("/health")
 async def health():
-    """Health check."""
-    return {"status": "healthy"}
+    """
+    Health check. Includes the deployed git commit (Render injects
+    RENDER_GIT_COMMIT) so "which code is actually live?" is a one-request
+    question instead of a guessing game.
+    """
+    import os
+    return {
+        "status": "healthy",
+        "version": settings.app_version,
+        "commit": os.getenv("RENDER_GIT_COMMIT", "unknown")[:12],
+    }

@@ -6,11 +6,16 @@ That host was decommissioned, and (verified 2026-07-19) **no** HF inference
 provider serves the ``facebook/mms-tts-*`` models through the router either —
 their ``inferenceProviderMapping`` is empty. So HF-based TTS cannot work at all.
 
-Current implementation: **Groq's TTS models** (``playai-tts`` for English and
-``playai-tts-arabic`` for Arabic) through the same Groq account that already
-writes the advisories. Languages without a working TTS voice keep
-``requires_recording=True`` so a community mother-tongue recording can be
+Current implementation: **Groq's Orpheus TTS models**
+(``canopylabs/orpheus-v1-english`` and ``canopylabs/orpheus-arabic-saudi``)
+through the same Groq account that already writes the advisories. (Groq's
+earlier PlayAI TTS models were retired.) Languages without a working TTS voice
+keep ``requires_recording=True`` so a community mother-tongue recording can be
 attached instead — a wrong-language robot voice would be worse than none.
+
+Orpheus caps input at 200 characters per request, so the voice note speaks the
+advisory *headline* (title + leading fact) rather than the whole text — a
+spoken alert, with the full detail in the written advisory.
 
 Audio files are named by content hash, so re-generating the same advisory
 (cache refresh every 6 h) reuses the existing file instead of paying for a new
@@ -20,7 +25,7 @@ synthesis.
 import asyncio
 import hashlib
 import logging
-import os
+import re
 from pathlib import Path
 
 import requests
@@ -32,12 +37,15 @@ logger = logging.getLogger(__name__)
 
 # Language → (Groq TTS model, voice). Only languages Groq actually speaks.
 GROQ_TTS_MODELS = {
-    Language.ENGLISH: ("playai-tts", "Fritz-PlayAI"),
-    Language.ARABIC: ("playai-tts-arabic", "Ahmad-PlayAI"),
+    Language.ENGLISH: ("canopylabs/orpheus-v1-english", "austin"),
+    Language.ARABIC: ("canopylabs/orpheus-arabic-saudi", "abdullah"),
 }
 
 GROQ_TTS_URL = "https://api.groq.com/openai/v1/audio/speech"
 _TIMEOUT_SECONDS = 30
+
+# Orpheus rejects inputs over 200 characters; stay safely under it.
+_MAX_TTS_CHARS = 195
 
 _STATIC_AUDIO_DIR = Path("static/audio")
 
@@ -54,7 +62,7 @@ async def get_or_generate_voice_note(advisory: Advisory) -> Advisory:
         return advisory
 
     model, voice = tts
-    text_to_speak = f"{advisory.title}. {advisory.body} " + ". ".join(advisory.actions)
+    text_to_speak = _headline(advisory)
 
     # Content-addressed filename: identical advisory text → identical file, so
     # cache refreshes and repeated requests never re-synthesize.
@@ -84,6 +92,24 @@ async def get_or_generate_voice_note(advisory: Advisory) -> Advisory:
     return advisory
 
 
+def _headline(advisory: Advisory) -> str:
+    """
+    The spoken version of the advisory: its title, then as many leading body
+    sentences as fit in Orpheus's 200-character input budget. The written
+    advisory carries the full detail; the voice note is the alert.
+    """
+    text = advisory.title.rstrip(".!؟?")
+    for sentence in re.split(r"(?<=[.!؟?])\s+", advisory.body):
+        sentence = sentence.strip().rstrip(".!؟?")
+        if not sentence:
+            continue
+        candidate = f"{text}. {sentence}"
+        if len(candidate) > _MAX_TTS_CHARS - 1:
+            break
+        text = candidate
+    return f"{text}."[:_MAX_TTS_CHARS]
+
+
 def _call_groq_tts(model: str, voice: str, text: str) -> bytes:
     """One synthesis call against Groq's OpenAI-compatible speech endpoint."""
     response = requests.post(
@@ -95,9 +121,7 @@ def _call_groq_tts(model: str, voice: str, text: str) -> bytes:
         json={
             "model": model,
             "voice": voice,
-            # Groq caps TTS input at 10K chars; advisories are far shorter, but
-            # guard anyway so an outlier degrades to a truncated note, not a 400.
-            "input": text[:9500],
+            "input": text[:_MAX_TTS_CHARS],
             "response_format": "wav",
         },
         timeout=_TIMEOUT_SECONDS,
