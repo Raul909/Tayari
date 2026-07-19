@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.5.1] - 2026-07-19
+### Added
+- **Right-to-left Arabic.** Advisories written in Arabic now display
+  right-to-left in the basin screen. The app detects the script in the text
+  itself, so an Arabic advisory delivered as the fallback for another language
+  also renders correctly.
+
+### Changed
+- Server-side (no app update needed, listed for completeness): languages the AI
+  cannot write (Daasanach, Afar, Turkana…) now arrive in the basin's regional
+  language instead of unreadable output, and English/Arabic advisories include a
+  spoken voice note again.
+
 ## [1.5.0] - 2026-07-19
 ### Added
 - **Teacher and Student audiences.** Advisories can now be written for a teacher
