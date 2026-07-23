@@ -11,9 +11,10 @@ import AuthModal from '@/components/AuthModal';
 export default function AlertsPage() {
   const { user, loading: authLoading, logout } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showSignInBanner, setShowSignInBanner] = useState(true);
 
   const [basinsData, setBasinsData] = useState([]);
-  const [basinId, setBasinId] = useState('shabelle');
+  const [basinId, setBasinId] = useState('');
   const [role, setRole] = useState('farmer');
   const [language, setLanguage] = useState('en');
   const [phoneNumber, setPhoneNumber] = useState('+2521234567');
@@ -53,7 +54,7 @@ export default function AlertsPage() {
   }, []);
 
   useEffect(() => {
-    if (basinsData.length > 0) {
+    if (basinsData.length > 0 && basinId) {
       loadPreview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,7 +63,18 @@ export default function AlertsPage() {
   async function loadBasins() {
     try {
       const data = await fetchBasins();
-      setBasinsData(data.basins || []);
+      const list = data.basins || [];
+      setBasinsData(list);
+      // Ensure selected basin exists in the fetched list
+      if (list.length > 0) {
+        const currentExists = list.find(b => b.id === basinId);
+        if (!currentExists) {
+          setBasinId(list[0].id);
+          // Also set language to the first supported language for this basin
+          const langs = list[0].languages || ['en'];
+          setLanguage(langs[0]);
+        }
+      }
     } catch (e) {
       console.error(e);
     }
@@ -154,6 +166,12 @@ export default function AlertsPage() {
   const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 
   async function handleSend() {
+    // Gate dispatch behind authentication
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     const phones = parsePhones(phoneNumber);
     if (phones.length === 0) {
       notify({ type: 'error', title: 'No recipients', message: 'Enter at least one phone number.' });
@@ -190,27 +208,17 @@ export default function AlertsPage() {
     }
   }
 
-  if (authLoading) {
-    return <div className="loading-container" style={{ minHeight: '60vh' }} />;
+  function handleBasinChange(e) {
+    const newBasinId = e.target.value;
+    setBasinId(newBasinId);
+    // Reset language to the first supported language for the new basin
+    const selected = basinsData.find(b => b.id === newBasinId);
+    const langs = selected?.languages || ['en'];
+    setLanguage(langs[0]);
   }
 
-  if (!user) {
-    return (
-      <div className="page-container" style={{ maxWidth: 400, margin: '100px auto' }}>
-        <div className="card">
-          <div className="card-header"><div className="card-title">Sign In Required</div></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: 20 }}>
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              Alert dispatch is secured. Sign in with your Tayari account to continue.
-            </p>
-            <button className="btn btn-primary" onClick={() => setShowAuthModal(true)}>
-              Sign In
-            </button>
-          </div>
-        </div>
-        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-      </div>
-    );
+  if (authLoading) {
+    return <div className="loading-container" style={{ minHeight: '60vh' }} />;
   }
 
   // Basin specific language filter
@@ -220,12 +228,36 @@ export default function AlertsPage() {
 
   return (
     <div className="page-container">
+      {/* Dismissible sign-in banner for guests */}
+      {!user && showSignInBanner && (
+        <div className="alert-signin-banner">
+          <div className="alert-signin-banner-content">
+            <span className="alert-signin-banner-icon">🔒</span>
+            <div className="alert-signin-banner-text">
+              <strong>Sign in to dispatch alerts.</strong>
+              <span> You can preview alerts and browse history without an account. Sign in is required to send alerts.</span>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowAuthModal(true)} style={{ flexShrink: 0 }}>
+              Sign In
+            </button>
+          </div>
+          <button
+            className="alert-signin-banner-close"
+            onClick={() => setShowSignInBanner(false)}
+            title="Dismiss"
+            aria-label="Dismiss sign-in banner"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 className="page-title">Alerts</h1>
           <p className="page-description">Generate and send multilingual flood advisories via Cloudflare SMS Workers.</p>
         </div>
-        <button className="btn" onClick={logout}>Logout</button>
+        {user && <button className="btn" onClick={logout}>Logout</button>}
       </div>
 
       <div className="grid-2col">
@@ -239,10 +271,7 @@ export default function AlertsPage() {
                 id="basin"
                 className="form-select"
                 value={basinId}
-                onChange={(e) => {
-                  setBasinId(e.target.value);
-                  setLanguage('en');
-                }}
+                onChange={handleBasinChange}
               >
                 {basinsData.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
@@ -297,7 +326,7 @@ export default function AlertsPage() {
               disabled={sending || previewLoading || (requiresRecording && !audioBlob)}
               style={{ marginTop: '4px' }}
             >
-              {sending ? 'Sending…' : 'Dispatch Alert'}
+              {!user ? '🔒 Sign In to Dispatch' : sending ? 'Sending…' : 'Dispatch Alert'}
             </button>
           </div>
         </div>
@@ -396,6 +425,8 @@ export default function AlertsPage() {
           </div>
         )}
       </div>
+
+      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
     </div>
   );
 }
