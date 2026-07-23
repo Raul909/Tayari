@@ -9,11 +9,10 @@ export default function UserMenu() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const menuRef = useRef(null);
+  const hideTimerRef = useRef(null);
   const { notify } = useToast();
 
-  // Close on outside click rather than mouseLeave — the dropdown sits a few
-  // pixels below the avatar, and mouseLeave fired while crossing that gap
-  // before a click could land on any option.
+  // Close on outside click
   useEffect(() => {
     if (!showDropdown) return;
     function handleClickOutside(e) {
@@ -24,6 +23,24 @@ export default function UserMenu() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDropdown]);
+
+  // Cleanup hide timer on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
+  function handleMouseLeave() {
+    hideTimerRef.current = setTimeout(() => setShowDropdown(false), 300);
+  }
+
+  function handleMouseEnter() {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }
 
   if (!user) {
     return (
@@ -39,7 +56,7 @@ export default function UserMenu() {
   const initial = (user.user_metadata?.display_name || user.email || '?').charAt(0).toUpperCase();
 
   return (
-    <div className="user-menu" ref={menuRef}>
+    <div className="user-menu" ref={menuRef} onMouseLeave={handleMouseLeave} onMouseEnter={handleMouseEnter}>
       <div 
         className="user-avatar" 
         onClick={() => setShowDropdown(!showDropdown)}

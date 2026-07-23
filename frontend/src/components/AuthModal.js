@@ -54,6 +54,7 @@ export default function AuthModal({ onClose }) {
   return (
     <div className="auth-overlay" onClick={onClose}>
       <div className="auth-modal" onClick={e => e.stopPropagation()}>
+        <button className="auth-modal-close" onClick={onClose} title="Close" aria-label="Close">×</button>
         <div className="auth-tabs">
           <button 
             className={`auth-tab ${view === 'login' ? 'active' : ''}`}
