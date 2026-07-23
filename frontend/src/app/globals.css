@@ -1529,3 +1529,199 @@ tr:hover td { background: var(--surface-sunken); }
   background: var(--bg-secondary);
 }
 
+/* ─── Feedback Modal ────────────────────────────────────────────── */
+
+.feedback-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-modal {
+  background: var(--surface);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  position: relative;
+  font-family: inherit;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.feedback-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.feedback-close:hover {
+  color: var(--text-primary);
+}
+
+.feedback-title {
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 24px 0 16px;
+  color: var(--text-primary);
+}
+
+.feedback-body {
+  padding: 0 24px 24px;
+}
+
+.feedback-section {
+  margin-bottom: 24px;
+}
+
+.feedback-section label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+}
+
+.feedback-section .required {
+  color: #ff4d4f;
+}
+
+.feedback-emojis {
+  display: flex;
+  justify-content: space-between;
+}
+
+.emoji-btn {
+  background: none;
+  border: 2px solid transparent;
+  font-size: 32px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  transition: transform 0.2s, filter 0.2s;
+  filter: grayscale(100%);
+  opacity: 0.6;
+}
+
+.emoji-btn:hover {
+  transform: scale(1.1);
+  filter: grayscale(50%);
+  opacity: 0.8;
+}
+
+.emoji-btn.selected {
+  filter: grayscale(0%);
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.feedback-subjects {
+  display: flex;
+  gap: 12px;
+}
+
+.subject-btn {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.subject-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.subject-btn.selected {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+}
+
+.feedback-section textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.9rem;
+  background: transparent;
+  color: var(--text-primary);
+  resize: none;
+}
+
+.feedback-section textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.feedback-error {
+  color: #ff4d4f;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.feedback-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.feedback-submit-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.feedback-submit-btn:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.feedback-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.feedback-watermark {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.feedback-watermark strong {
+  color: var(--text-primary);
+}
+
+.feedback-success {
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.success-icon {
+  font-size: 48px;
+  color: #52c41a;
+  margin-bottom: 16px;
+}

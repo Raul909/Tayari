@@ -158,3 +158,16 @@ export async function sendChatMessage(basinId, message, role = 'general', langua
   if (!res.ok) throw new Error(`Chat failed: ${res.status}`);
   return res.json();
 }
+
+/**
+ * Submit user feedback to the system.
+ */
+export async function sendFeedback(rating, subject, comment) {
+  const res = await fetch(`${API_BASE}/api/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating, subject, comment }),
+  });
+  if (!res.ok) throw new Error(`Failed to submit feedback: ${res.status}`);
+  return res.json();
+}

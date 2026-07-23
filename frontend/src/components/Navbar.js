@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import UserMenu from '@/components/UserMenu';
+import FeedbackModal from '@/components/FeedbackModal';
 
 export default function Navbar() {
+  const [showFeedback, setShowFeedback] = useState(false);
   const pathname = usePathname();
 
   const links = [
@@ -30,16 +33,20 @@ export default function Navbar() {
             {link.label}
           </Link>
         ))}
-        <a 
-          href="mailto:contact@launchpixel.in?subject=Tayari Bug Report / Feedback" 
+        <button 
+          onClick={() => setShowFeedback(true)}
           className="nav-link feedback-link"
           title="Provide feedback or report a bug"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit' }}
         >
           💬 <span className="feedback-text">Feedback</span>
-        </a>
+        </button>
         <UserMenu />
       </div>
+      
+      {showFeedback && (
+        <FeedbackModal onClose={() => setShowFeedback(false)} />
+      )}
     </nav>
   );
 }
