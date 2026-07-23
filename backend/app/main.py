@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import forecasts, alerts, chat, user
+from app.routers import forecasts, alerts, chat, user, feedback
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -126,8 +126,8 @@ app.add_middleware(
 app.include_router(forecasts.router, prefix="/api", tags=["forecasts"])
 app.include_router(alerts.router, prefix="/api", tags=["alerts"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(feedback.router, prefix="/api", tags=["feedback"])
 app.include_router(user.router)
-
 # Serve uploaded report photos
 _uploads_dir = Path(__file__).parent.parent / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)

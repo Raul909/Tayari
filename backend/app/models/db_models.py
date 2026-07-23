@@ -171,3 +171,15 @@ class AdvisoryCacheORM(Base):
     cache_key: Mapped[str] = mapped_column(String(160), primary_key=True)
     advisory_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+class FeedbackORM(Base):
+    """User feedback submitted via the Feedback modal."""
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    subject: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
