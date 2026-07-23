@@ -77,6 +77,24 @@ async def chat_advisory(
     risk = compute_flood_risk(basin, discharge_data, rainfall_data)
     impact = compute_impact(basin_id, risk.risk_level)
 
+    from datetime import date
+    today = date.today()
+    current_discharge = 0.0
+    for d in discharge_data:
+        if d.date == today and d.discharge_mean is not None:
+            current_discharge = d.discharge_mean
+            break
+    if current_discharge == 0.0:
+        for d in reversed(discharge_data):
+            if d.discharge_mean is not None:
+                current_discharge = d.discharge_mean
+                break
+                
+    max_discharge = 0.0
+    for d in discharge_data:
+        if d.discharge_mean is not None and d.discharge_mean > max_discharge:
+            max_discharge = d.discharge_mean
+
     lang_name = LANGUAGE_NAMES.get(chat_req.language.value, chat_req.language.value)
     role_desc = ROLE_DESCRIPTIONS.get(chat_req.role.value, "")
 
@@ -89,8 +107,8 @@ Write entirely in {lang_name}.
 CONTEXT:
 Risk Level: {risk.risk_level.value}
 River: {basin.river}
-Current Flow: {risk.current_discharge_m3s:.1f} m³/s
-Max Forecast Flow: {risk.forecast_max_discharge_m3s:.1f} m³/s
+Current Flow: {current_discharge:.1f} m³/s
+Max Forecast Flow: {max_discharge:.1f} m³/s
 
 Impact:
 Population at risk: {impact.estimated_population_at_risk}
@@ -121,7 +139,10 @@ User Role: {role_desc}
             logger.warning(f"Chat memory lookup failed ({e}); continuing without it")
 
     for m in chat_req.session_messages:
-        messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+        r = m.get("role", "user")
+        if r == "ai":
+            r = "assistant"
+        messages.append({"role": r, "content": m.get("content", "")})
     
     messages.append({"role": "user", "content": chat_req.message})
 
