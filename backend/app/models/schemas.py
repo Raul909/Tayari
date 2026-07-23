@@ -199,7 +199,7 @@ class AlertRequest(BaseModel):
     role: UserRole = UserRole.GENERAL
     language: Language = Language.ENGLISH
     phone_numbers: list[str] = Field(
-        min_length=1, max_length=500, description="Phone numbers in international format"
+        min_length=1, max_length=3, description="Phone numbers in international format"
     )
 
 

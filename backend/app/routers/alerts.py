@@ -114,7 +114,7 @@ def _to_report_schema(row: ReportORM) -> CommunityReport:
 # ─── Alert Endpoints ─────────────────────────────────────────────────────────
 
 @router.post("/alerts/send", response_model=AlertResponse, status_code=202)
-@limiter.limit("10/minute")
+@limiter.limit("5/hour")
 async def send_alert(
     request: Request,
     alert_req: AlertRequest,
