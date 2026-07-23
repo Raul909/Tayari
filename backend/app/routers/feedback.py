@@ -18,16 +18,10 @@ class FeedbackCreate(BaseModel):
     subject: str | None = None
     comment: str | None = None
 
-def send_feedback_email_sync(rating: int, subject: str | None, comment: str | None):
-    """Sends a feedback email synchronously (to be run in a background thread)."""
-    smtp_server = os.getenv("SMTP_SERVER")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    to_email = "contact@launchpixel.in"
-    from_email = smtp_user or "noreply@tayari.app"
-
-    # Frame the email content
+async def send_feedback_email(rating: int, subject: str | None, comment: str | None):
+    """Sends a feedback email via FormSubmit.co (hosted external service)."""
+    import httpx
+    
     rating_map = {1: 'Angry 😠', 2: 'Sad 😞', 3: 'Neutral 😐', 4: 'Happy 🙂', 5: 'Very Happy 😄'}
     rating_text = rating_map.get(rating, str(rating))
     
@@ -40,30 +34,25 @@ Subject: {subject_text}
 
 Comment:
 {comment if comment else 'No comment provided.'}
-
--- 
-Tayari Automated System
 """
 
-    msg = EmailMessage()
-    msg.set_content(body)
-    msg['Subject'] = f"Tayari Feedback - {subject_text} ({rating_text})"
-    msg['From'] = from_email
-    msg['To'] = to_email
-
-    if not smtp_server or not smtp_password:
-        logger.info("SMTP not configured. Mocking feedback email send:")
-        logger.info(f"--- EMAIL TO {to_email} ---\n{msg.as_string()}\n-----------------------")
-        return
+    payload = {
+        "rating": rating_text,
+        "subject": subject_text,
+        "message": body,
+        "_subject": f"Tayari Feedback - {subject_text} ({rating_text})"
+    }
 
     try:
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.send_message(msg)
-        logger.info("Feedback email sent successfully.")
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                "https://formsubmit.co/ajax/contact@launchpixel.in",
+                json=payload
+            )
+            res.raise_for_status()
+        logger.info("Feedback email sent via FormSubmit.co successfully.")
     except Exception as e:
-        logger.error(f"Failed to send feedback email: {e}")
+        logger.error(f"Failed to send feedback via FormSubmit.co: {e}")
 
 
 @router.post("/feedback")
@@ -87,7 +76,7 @@ async def submit_feedback(
 
     # Schedule email notification
     background_tasks.add_task(
-        send_feedback_email_sync, 
+        send_feedback_email, 
         feedback.rating, 
         feedback.subject, 
         feedback.comment
