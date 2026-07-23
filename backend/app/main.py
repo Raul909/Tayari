@@ -66,17 +66,41 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+import asyncio
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
 # Add rate limiting handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Concurrency limiter — cap active requests at 100 with a 30s timeout per request
+_semaphore = asyncio.Semaphore(100)
+
+class ConcurrencyLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            async with asyncio.timeout(30):
+                async with _semaphore:
+                    return await call_next(request)
+        except asyncio.TimeoutError:
+            return JSONResponse({"detail": "Request timeout"}, status_code=504)
+        except Exception as e:
+            logger.error(f"Middleware execution error: {e}")
+            return JSONResponse({"detail": "Server busy"}, status_code=503)
+
+app.add_middleware(ConcurrencyLimitMiddleware)
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    """Add basic security headers against XSS and other attacks"""
+    """Add basic security headers against XSS and enable client caching for GET endpoints."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if request.method == "GET" and response.status_code == 200:
+        # Cache GET endpoints for 60 seconds on the client / CDN edge
+        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     return response
 
 # CORS — allow frontend (dev + production)

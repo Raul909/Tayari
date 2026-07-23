@@ -7,10 +7,12 @@ These are the core endpoints that the frontend consumes.
 import json
 import asyncio
 import logging
+import time
 from pathlib import Path
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.limiter import limiter
 from app.models.schemas import (
     BasinSummary, BasinConfig, FullForecast, DischargeTimeSeries,
     FloodRiskScore, RiskLevel, UserRole, Language, DailyDischarge
@@ -23,6 +25,22 @@ from app.services.advisory import generate_advisory
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Simple in-memory response cache with TTL (5 minutes)
+_cache: dict[str, tuple[float, any]] = {}
+CACHE_TTL = 300
+
+
+def _get_cached(key: str):
+    entry = _cache.get(key)
+    if entry and (time.time() - entry[0]) < CACHE_TTL:
+        return entry[1]
+    return None
+
+
+def _set_cache(key: str, value):
+    _cache[key] = (time.time(), value)
+
 
 # Load basins config
 _basins_path = Path(__file__).parent.parent / "data" / "basins.json"
@@ -106,7 +124,8 @@ async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
 
 
 @router.get("/basins", response_model=list[BasinSummary])
-async def list_basins():
+@limiter.limit("30/minute")
+async def list_basins(request: Request):
     """
     List all monitored basins with their current risk levels.
 
@@ -116,14 +135,22 @@ async def list_basins():
     All basins are summarized concurrently so total latency is roughly one
     upstream round-trip rather than the sum across every basin.
     """
+    cached = _get_cached("basins_list")
+    if cached is not None:
+        return cached
+
     basins = _load_basins()
-    return await asyncio.gather(*(_summarize_basin(b) for b in basins))
+    res = await asyncio.gather(*(_summarize_basin(b) for b in basins))
+    _set_cache("basins_list", res)
+    return res
 
 
 # ─── Forecast Endpoints ──────────────────────────────────────────────────────
 
 @router.get("/forecasts/{basin_id}", response_model=FullForecast)
+@limiter.limit("20/minute")
 async def get_forecast(
+    request: Request,
     basin_id: str,
     role: UserRole = Query(UserRole.GENERAL, description="Target audience role"),
     language: Language = Query(Language.ENGLISH, description="Advisory language"),
@@ -135,6 +162,11 @@ async def get_forecast(
     - Impact assessment (population + infrastructure at risk)
     - AI-generated multilingual advisory
     """
+    cache_key = f"forecast_{basin_id}_{role.value}_{language.value}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     basin = _get_basin(basin_id)
 
     # Fetch data from both APIs concurrently
@@ -188,7 +220,7 @@ async def get_forecast(
                 current_discharge = d.discharge_mean
                 break
 
-    return FullForecast(
+    forecast_res = FullForecast(
         basin=BasinSummary(
             id=basin.id,
             name=basin.name,
@@ -213,6 +245,8 @@ async def get_forecast(
         impact=impact,
         advisory=advisory,
     )
+    _set_cache(cache_key, forecast_res)
+    return forecast_res
 
 
 @router.get("/forecasts/{basin_id}/history")
