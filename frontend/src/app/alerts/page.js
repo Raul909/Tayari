@@ -63,20 +63,19 @@ export default function AlertsPage() {
   async function loadBasins() {
     try {
       const data = await fetchBasins();
-      const list = data.basins || [];
+      const list = Array.isArray(data) ? data : (data?.basins || []);
       setBasinsData(list);
-      // Ensure selected basin exists in the fetched list
       if (list.length > 0) {
-        const currentExists = list.find(b => b.id === basinId);
-        if (!currentExists) {
-          setBasinId(list[0].id);
-          // Also set language to the first supported language for this basin
+        setBasinId((prev) => {
+          if (prev && list.find((b) => b.id === prev)) return prev;
+          const first = list[0].id;
           const langs = list[0].languages || ['en'];
           setLanguage(langs[0]);
-        }
+          return first;
+        });
       }
     } catch (e) {
-      console.error(e);
+      console.error('Failed to load basins:', e);
     }
   }
 
@@ -166,12 +165,6 @@ export default function AlertsPage() {
   const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 
   async function handleSend() {
-    // Gate dispatch behind authentication
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
-
     const phones = parsePhones(phoneNumber);
     if (phones.length === 0) {
       notify({ type: 'error', title: 'No recipients', message: 'Enter at least one phone number.' });
@@ -187,13 +180,16 @@ export default function AlertsPage() {
       return;
     }
 
-    // In a real app, if audioBlob exists, we would upload it via FormData to a dedicated voice endpoint.
-    // For this implementation, we just pass the token to sendAlert.
     setSending(true);
     try {
-      const supabase = await getSupabase();
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      let token = null;
+      try {
+        const supabase = await getSupabase();
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token;
+      } catch (e) {
+        // Guest user — proceed without token
+      }
       const res = await sendAlert(basinId, role, language, phones, token);
       if (res.success) {
         notify({ type: 'success', title: 'Alert sent', message: res.message });
@@ -228,30 +224,6 @@ export default function AlertsPage() {
 
   return (
     <div className="page-container">
-      {/* Dismissible sign-in banner for guests */}
-      {!user && showSignInBanner && (
-        <div className="alert-signin-banner">
-          <div className="alert-signin-banner-content">
-            <span className="alert-signin-banner-icon">🔒</span>
-            <div className="alert-signin-banner-text">
-              <strong>Sign in to dispatch alerts.</strong>
-              <span> You can preview alerts and browse history without an account. Sign in is required to send alerts.</span>
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowAuthModal(true)} style={{ flexShrink: 0 }}>
-              Sign In
-            </button>
-          </div>
-          <button
-            className="alert-signin-banner-close"
-            onClick={() => setShowSignInBanner(false)}
-            title="Dismiss"
-            aria-label="Dismiss sign-in banner"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 className="page-title">Alerts</h1>
@@ -326,7 +298,7 @@ export default function AlertsPage() {
               disabled={sending || previewLoading || (requiresRecording && !audioBlob)}
               style={{ marginTop: '4px' }}
             >
-              {!user ? '🔒 Sign In to Dispatch' : sending ? 'Sending…' : 'Dispatch Alert'}
+              {sending ? 'Sending…' : 'Dispatch Alert'}
             </button>
           </div>
         </div>
