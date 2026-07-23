@@ -30,16 +30,22 @@ from app.models.schemas import (
 )
 from app.services.advisory import generate_advisory
 from app.services.alerts import send_sms_alert
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, get_optional_user
 from app.services.flood_data import fetch_river_discharge
 from app.services.flood_model import compute_flood_risk
 from app.services.impact import compute_impact
 from app.services.weather_data import fetch_upstream_rainfall
 
 import json
+import time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# In-memory tracking of phone number dispatches with timestamp to prevent duplicate alerting
+_phone_send_history: dict[str, float] = {}
+PHONE_COOLDOWN_SECONDS = 300  # 5 minutes cooldown per phone number
+
 
 # Upload directory for report photos.
 # NOTE: on ephemeral hosts (e.g. Render/Koyeb free tier) this disk is wiped on
@@ -108,28 +114,43 @@ def _to_report_schema(row: ReportORM) -> CommunityReport:
 # ─── Alert Endpoints ─────────────────────────────────────────────────────────
 
 @router.post("/alerts/send", response_model=AlertResponse, status_code=202)
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def send_alert(
     request: Request,
     alert_req: AlertRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    user: UserProfileORM = Depends(get_current_user),
+    user: Optional[UserProfileORM] = Depends(get_optional_user),
 ):
     """
     Send an SMS alert for a basin (Load Balanced).
 
-    Requires a valid Supabase-authenticated user. Checks the database to
-    ensure we haven't already alerted (or started alerting) this basin within
-    the last 12 hours (caching for safety to prevent SMS spam and duplicate
-    Twilio charges). If clear, reserves the dedup slot immediately and queues
-    the heavy LLM and SMS network tasks to run in the background.
+    Accessible to all users (guests and signed-in members).
+    Enforces a 5-minute per-phone-number rate limit to prevent sending
+    alerts to the same phone number repeatedly within a short window.
     """
+    # 1. Per-phone rate limit check
+    now = time.time()
+    rate_limited_phones = []
+    valid_phones = []
+    for phone in alert_req.phone_numbers:
+        last_sent = _phone_send_history.get(phone, 0)
+        if (now - last_sent) < PHONE_COOLDOWN_SECONDS:
+            rate_limited_phones.append(phone)
+        else:
+            valid_phones.append(phone)
+
+    if rate_limited_phones:
+        mins_remaining = int((PHONE_COOLDOWN_SECONDS - (now - _phone_send_history[rate_limited_phones[0]])) / 60) + 1
+        return AlertResponse(
+            success=False,
+            message=f"Rate limit: {', '.join(rate_limited_phones)} received an alert recently. Please wait ~{mins_remaining} min before sending again.",
+            sms_count=0,
+        )
+
     basin = _get_basin_config(alert_req.basin_id)
 
-    # A per-basin lock closes the gap between the dedup check and reserving the
-    # slot below — without it, two near-simultaneous requests could both read
-    # "no recent alert" and both queue a duplicate SMS blast.
+    # 2. Reserve dedup slot for basin
     async with _get_alert_lock(alert_req.basin_id):
         stmt = select(AlertORM).where(
             AlertORM.basin_id == alert_req.basin_id,
@@ -152,6 +173,10 @@ async def send_alert(
                     message="Alert skipped: An alert was already sent for this basin within the last 12 hours.",
                     sms_count=0
                 )
+
+        # Record phone timestamps
+        for phone in valid_phones:
+            _phone_send_history[phone] = now
 
         # Reserve the dedup slot synchronously, before queuing the background
         # task, so a concurrent request sees it immediately (see PENDING check above).
