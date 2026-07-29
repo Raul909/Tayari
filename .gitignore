@@ -16,6 +16,9 @@ node_modules/
 .next/
 out/
 
+# Cloudflare Wrangler
+.wrangler/
+
 # Runtime data (created by the backend at runtime)
 backend/app/data/community_reports.json
 backend/uploads/
