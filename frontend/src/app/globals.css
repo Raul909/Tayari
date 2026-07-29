@@ -600,6 +600,19 @@ a { color: inherit; }
   color: var(--text-muted);
 }
 
+/* Shown when the requested language couldn't be delivered and the advisory
+   fell back to a regional language or English. */
+.advisory-fallback-note {
+  margin-bottom: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 /* ─── Impact ───────────────────────────────────────────────────────────── */
 
 .impact-grid {

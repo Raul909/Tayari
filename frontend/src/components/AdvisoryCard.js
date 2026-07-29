@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { sendChatMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { LANGUAGE_LABELS } from '@/lib/constants';
 
 export default function AdvisoryCard({ advisory, basinId, role, language }) {
   const [chatOpen, setChatOpen] = useState(false);
@@ -31,6 +32,13 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
   // advisory.language is the language actually delivered (the backend may fall
   // back from an unsupported mother tongue), so it decides the text direction.
   const dir = advisory.language === 'ar' ? 'rtl' : undefined;
+  // When the backend couldn't deliver the requested language (e.g. the AI
+  // translator was momentarily unavailable and it fell back to a regional
+  // language or English), tell the reader why the text isn't in their language.
+  const deliveredLang = advisory.language;
+  const fellBack = language && deliveredLang && deliveredLang !== language;
+  const deliveredName = LANGUAGE_LABELS[deliveredLang] || deliveredLang;
+  const requestedName = LANGUAGE_LABELS[language] || language;
 
   async function handleSend(e) {
     e.preventDefault();
@@ -62,6 +70,11 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
 
   return (
     <div className={`advisory-card advisory-card--${level}`}>
+      {fellBack && (
+        <div className="advisory-fallback-note" role="status">
+          Shown in {deliveredName} — {requestedName} isn’t available right now.
+        </div>
+      )}
       <div className="advisory-title" dir={dir}>{advisory.title}</div>
       <div className="advisory-body" dir={dir}>{advisory.body}</div>
       {advisory.actions && advisory.actions.length > 0 && (
