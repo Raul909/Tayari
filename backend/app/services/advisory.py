@@ -30,6 +30,10 @@ except ImportError:
 # Advisory cache (risk_level + role + language → advisory)
 _advisory_cache: dict[str, tuple[Advisory, datetime]] = {}
 CACHE_TTL_HOURS = 6
+# Template fallbacks are served only while Groq is unavailable. Cache them for a
+# short window (not the full 6 h) so a transient outage or rate-limit doesn't
+# poison the cache with a degraded template long after the LLM has recovered.
+TEMPLATE_CACHE_TTL_MINUTES = 20
 
 
 LANGUAGE_NAMES = {
@@ -122,6 +126,29 @@ FALLBACK_LANGUAGE = {
     Language.TURKANA: Language.SWAHILI,     # Lake Turkana shore → Kenya
     Language.DINKA: Language.ARABIC,        # White Nile / Bor → Juba Arabic
 }
+
+# The only languages the offline template fallback is actually written in. Every
+# other language, when the LLM is unavailable, is delivered in one of these.
+TEMPLATE_LANGUAGES = {Language.ENGLISH, Language.SOMALI, Language.SWAHILI}
+
+
+def _delivered_template_language(language: Language) -> Language:
+    """
+    Which language the template fallback can *honestly* deliver for a request.
+
+    Templates exist only in English, Somali and Swahili. For any other language
+    we prefer that basin's regional lingua franca when we have a template for it
+    (so a Luhya or Turkana reader gets Swahili, not English), otherwise English.
+    The returned language is what the Advisory is *labelled* with, so the UI
+    shows the right language, picks the right text direction, and the voice layer
+    picks the right TTS voice — instead of, say, English text tagged "Amharic".
+    """
+    if language in TEMPLATE_LANGUAGES:
+        return language
+    regional = FALLBACK_LANGUAGE.get(language)
+    if regional in TEMPLATE_LANGUAGES:
+        return regional
+    return Language.ENGLISH
 
 
 class TranslationQualityError(RuntimeError):
@@ -265,7 +292,13 @@ async def generate_advisory(
     cache_key = f"{risk.basin_id}_{risk.risk_level}_{role}_{language}"
     if cache_key in _advisory_cache:
         cached_advisory, cached_time = _advisory_cache[cache_key]
-        if datetime.utcnow() - cached_time < timedelta(hours=CACHE_TTL_HOURS):
+        # AI advisories get the full window; a cached template gets a short one so
+        # the next request after Groq recovers regenerates a real AI advisory.
+        max_age = (
+            timedelta(hours=CACHE_TTL_HOURS) if cached_advisory.ai_generated
+            else timedelta(minutes=TEMPLATE_CACHE_TTL_MINUTES)
+        )
+        if datetime.utcnow() - cached_time < max_age:
             return cached_advisory
 
     persisted = await _load_persisted_advisory(cache_key)
@@ -684,7 +717,12 @@ def _generate_template_advisory(
     """
     Template-based advisory fallback when the LLM is unavailable.
     Supports English, Somali, and Swahili with pre-written templates.
+
+    A language without a template is delivered — and honestly labelled — in the
+    regional lingua franca we do have (Swahili for Luhya/Turkana) or English,
+    rather than English text mislabelled as the requested mother tongue.
     """
+    language = _delivered_template_language(language)
     days = risk.threshold_exceedance_days or 3
 
     # Role-specific actions
