@@ -436,7 +436,7 @@ EXPOSURE (within the {impact.flood_zone_km} km flood zone):
 READER: {ROLE_DESCRIPTIONS[role]}. Write in English.
 RULES:
 1. TITLE — max 10 words, specific to this river and moment, not a generic label.
-2. BODY — 3–5 short sentences. Lead with the single most important fact. Give the danger window as concrete days ("between Thursday and Saturday", "within 2 days"), not vague soon-language. Translate one or two numbers into meaning a non-expert feels (e.g. "the river is already carrying twice its normal water"). Never dump all the statistics. No jargon, no panic, no exclamation marks.
+2. BODY — 3–5 short sentences. Lead with the single most important fact. Give the danger window primarily as a concrete number of days from today ("within 2 days", "over the next 3 days"), not vague soon-language; you may add the weekday in brackets, but the day-count is the main phrasing (numbers stay accurate in every translation, weekday names often do not). Translate one or two numbers into meaning a non-expert feels (e.g. "the river is already carrying twice its normal water"). Never dump all the statistics. No jargon, no panic, no exclamation marks.
 3. ACTIONS — 3 to 5, ordered by urgency. Each starts with a verb, is doable within 24–48 hours with local resources, and is tailored to the reader's role (a farmer moves grain and livestock; an officer pre-positions boats and alerts clinics). At most ONE information-type action. Banned phrases: "stay informed", "be prepared", "monitor the situation", "stay tuned", "remain vigilant".
 4. Tone must match risk. If the trend is FALLING or the risk is easing, say so honestly.
 
@@ -612,15 +612,21 @@ async def _run_groq_translation(
     client, english_text: str, language: Language, leaked: Optional[list[str]] = None
 ) -> str:
     """One Groq translation call. `leaked` marks a corrective retry (see caller)."""
+    lang_name = LANGUAGE_NAMES[language]
     glossary = FLOOD_GLOSSARY.get(language, "")
-    translate_prompt = f"""Translate the following flood advisory into natural, fluent {LANGUAGE_NAMES[language]}.
+    translate_prompt = f"""You are a professional translator. Translate the following flood advisory into natural, fluent {lang_name}. This is a life-safety message, so accuracy matters more than style.
 RULES:
-1. Translate every word of the content. Do NOT leave any English words (like Thursday or Saturday) in the output.
-2. Keep all numbers as digits exactly as given (e.g. 50,000; 126%). Never spell them out.
-3. Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown. Only translate the text after them.
-4. IMPORTANT VOCABULARY TO USE strictly (failure to use these is life-threatening): {glossary}
-5. Write ONLY in the {LANGUAGE_NAMES[language]} script. Never emit a character from any other writing system (no Chinese, Japanese, Korean, Cyrillic, Thai, etc.).
-"""
+1. Translate the MEANING faithfully and completely. Do not add, remove, exaggerate, or change any fact. Do not paraphrase freely — stay true to the source.
+2. Leave NO English word in the output — not one (e.g. "Thursday", "imminent", "evacuate", "river" must all become {lang_name} words).
+3. Keep every number exactly as given, as digits (e.g. 50,000; 126%; 95%). Never spell numbers out, drop them, or change them.
+4. Weekday and month names: use the correct, standard {lang_name} name. If you are not certain of it, instead write the number of days already given in the text — never invent, transliterate, or guess a date word (writing a wrong day is dangerous).
+5. Keep place names and river/basin names as they are; do not translate proper names into unrelated words.
+6. Keep the labels "TITLE:", "BODY:", and "ACTIONS:" in English exactly as shown. Only translate the text after them.
+7. Write ONLY in the {lang_name} script. Never emit a character from any other writing system (no Chinese, Japanese, Korean, Cyrillic, Thai, etc.)."""
+    if glossary:
+        translate_prompt += f"""
+8. Use this exact, life-critical vocabulary (using a wrong word here can cost lives): {glossary}"""
+    translate_prompt += "\n"
     if leaked:
         translate_prompt += f"""
 Your previous attempt was REJECTED: it left these non-{LANGUAGE_NAMES[language]} tokens in the output: {', '.join(leaked[:8])}.
@@ -651,9 +657,10 @@ Source Advisory in English:
         model=settings.groq_model,
         messages=[{"role": "user", "content": translate_prompt}],
         max_tokens=1024,
-        # A corrective retry runs cooler so the model sticks to a faithful,
-        # leak-free rendering instead of paraphrasing freely again.
-        temperature=0.2 if leaked else 0.3,
+        # Translation is a faithfulness task, not a creative one, so both passes
+        # run cool — the model sticks to a literal, leak-free rendering instead of
+        # paraphrasing. The corrective retry runs cooler still.
+        temperature=0.1 if leaked else 0.2,
     )
     return response_tl.choices[0].message.content.strip()
 
