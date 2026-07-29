@@ -13,14 +13,38 @@
         "latitude": 7.5,
         "longitude": 43.5
       },
-      "flood_threshold_m3s": 350,
-      "warning_threshold_m3s": 250,
-      "historical_median_m3s": 85,
+      "flood_threshold_m3s": 1166.3,
+      "warning_threshold_m3s": 614.2,
+      "historical_median_m3s": 291.4,
       "description": "The Shabelle River at Beledweyne is Somalia's most flood-prone point. The November 2023 floods displaced over 500,000 people. The river receives upstream rainfall from the Ethiopian highlands.",
       "languages": [
         "so",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.2322,
+        "true_skill_statistic": 0.768,
+        "days_above_warning_pct": 23.22,
+        "days_above_flood_pct": 2.0,
+        "cell_type": "channel",
+        "coefficient_of_variation": 0.758,
+        "record_max_m3s": 1562.2,
+        "calibrated_at": "2026-07-29"
+      }
     },
     {
       "id": "juba",
@@ -35,14 +59,38 @@
         "latitude": 5.5,
         "longitude": 41.0
       },
-      "flood_threshold_m3s": 500,
-      "warning_threshold_m3s": 380,
-      "historical_median_m3s": 150,
+      "flood_threshold_m3s": 2300.4,
+      "warning_threshold_m3s": 1558.5,
+      "historical_median_m3s": 612.8,
       "description": "The Juba River at Luuq is Southern Somalia's primary flood risk. The river originates in the Ethiopian highlands and regularly floods during the Deyr (Oct-Dec) and Gu (Apr-Jun) rain seasons.",
       "languages": [
         "so",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        5,
+        6,
+        9,
+        10,
+        11
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.0436,
+        "true_skill_statistic": 0.956,
+        "days_above_warning_pct": 5.01,
+        "days_above_flood_pct": 0.63,
+        "cell_type": "channel",
+        "coefficient_of_variation": 0.679,
+        "record_max_m3s": 5320.1,
+        "calibrated_at": "2026-07-29"
+      }
     },
     {
       "id": "tana",
@@ -50,21 +98,45 @@
       "river": "Tana River",
       "country": "Kenya",
       "gauge_point": {
-        "latitude": -2.27,
+        "latitude": -2.22,
         "longitude": 40.12
       },
       "upstream_point": {
         "latitude": -0.5,
         "longitude": 37.5
       },
-      "flood_threshold_m3s": 800,
-      "warning_threshold_m3s": 600,
-      "historical_median_m3s": 200,
+      "flood_threshold_m3s": 1917.7,
+      "warning_threshold_m3s": 414.9,
+      "historical_median_m3s": 129.5,
       "description": "Kenya's longest river, the Tana, floods at Garsen near its delta. The lower Tana basin is home to vulnerable pastoral and farming communities. Major floods occurred in April-May 2024.",
       "languages": [
         "sw",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        1,
+        4,
+        5,
+        11,
+        12
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.092,
+        "true_skill_statistic": 0.908,
+        "days_above_warning_pct": 10.02,
+        "days_above_flood_pct": 0.11,
+        "cell_type": "channel",
+        "coefficient_of_variation": 1.078,
+        "record_max_m3s": 2659.7,
+        "calibrated_at": "2026-07-29"
+      }
     },
     {
       "id": "nzoia",
@@ -72,22 +144,48 @@
       "river": "Nzoia River",
       "country": "Kenya",
       "gauge_point": {
-        "latitude": 0.1,
-        "longitude": 34.05
+        "latitude": 0.107,
+        "longitude": 34.03
       },
       "upstream_point": {
         "latitude": 0.61,
         "longitude": 34.77
       },
-      "flood_threshold_m3s": 300,
-      "warning_threshold_m3s": 220,
-      "historical_median_m3s": 90,
+      "flood_threshold_m3s": 1048.5,
+      "warning_threshold_m3s": 789.7,
+      "historical_median_m3s": 398.0,
       "description": "The Nzoia River bursts its banks at Budalangi (Bunyala) in the Lake Victoria basin almost every rainy season, making it one of Kenya's most chronically flooded areas. It drains the Cherangani Hills and Mt Elgon and floods heavily during the long (MAM) and short (OND) rains.",
       "languages": [
         "luy",
         "sw",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.1239,
+        "true_skill_statistic": 0.876,
+        "days_above_warning_pct": 12.67,
+        "days_above_flood_pct": 2.05,
+        "cell_type": "channel",
+        "coefficient_of_variation": 0.625,
+        "record_max_m3s": 1414.8,
+        "calibrated_at": "2026-07-29"
+      }
     },
     {
       "id": "awash",
@@ -102,15 +200,38 @@
         "latitude": 8.9,
         "longitude": 39.1
       },
-      "flood_threshold_m3s": 500,
-      "warning_threshold_m3s": 380,
-      "historical_median_m3s": 120,
+      "flood_threshold_m3s": 1376.2,
+      "warning_threshold_m3s": 880.0,
+      "historical_median_m3s": 113.0,
       "description": "The lower Awash floods across the Afar lowlands around Dubti and Asaita, fed by rains over the central Ethiopian highlands near Koka. Overflow displaced tens of thousands of Afar pastoralists in 2020, 2023 and 2024.",
       "languages": [
         "aa",
         "am",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        7,
+        8,
+        9,
+        10
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.0822,
+        "true_skill_statistic": 0.918,
+        "days_above_warning_pct": 8.91,
+        "days_above_flood_pct": 0.18,
+        "cell_type": "channel",
+        "coefficient_of_variation": 1.138,
+        "record_max_m3s": 1670.1,
+        "calibrated_at": "2026-07-29"
+      }
     },
     {
       "id": "white_nile",
@@ -119,21 +240,51 @@
       "country": "South Sudan",
       "gauge_point": {
         "latitude": 6.21,
-        "longitude": 31.56
+        "longitude": 31.51
       },
       "upstream_point": {
         "latitude": 5.2,
         "longitude": 31.77
       },
-      "flood_threshold_m3s": 1300,
-      "warning_threshold_m3s": 1050,
-      "historical_median_m3s": 800,
+      "flood_threshold_m3s": 7344.1,
+      "warning_threshold_m3s": 4953.5,
+      "historical_median_m3s": 4072.8,
       "description": "Around Bor and the Sudd in Jonglei, sustained high White Nile flows driven by Lake Victoria outflow produced catastrophic multi-year flooding from 2020-2022, affecting over a million people across South Sudan.",
       "languages": [
         "din",
         "ar",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        1,
+        5,
+        6,
+        7,
+        10,
+        11,
+        12
+      ],
+      "model_confidence": "low",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 0.667,
+        "false_alarm_rate": 0.224,
+        "true_skill_statistic": 0.443,
+        "days_above_warning_pct": 22.96,
+        "days_above_flood_pct": 2.04,
+        "cell_type": "damped",
+        "coefficient_of_variation": 0.274,
+        "record_max_m3s": 9246.0,
+        "calibrated_at": "2026-07-29",
+        "caveat": "coefficient of variation 0.27 is too flat for a free-flowing river — the model is treating this as a lake or wetland, so the short-term flood signal here is unreliable.",
+        "undetectable_events": [
+          "Jonglei floods 2022"
+        ]
+      }
     },
     {
       "id": "blue_nile",
@@ -148,14 +299,38 @@
         "latitude": 12.0,
         "longitude": 37.25
       },
-      "flood_threshold_m3s": 5500,
-      "warning_threshold_m3s": 4000,
-      "historical_median_m3s": 1400,
+      "flood_threshold_m3s": 14320.9,
+      "warning_threshold_m3s": 11994.0,
+      "historical_median_m3s": 2364.9,
       "description": "The Blue Nile carries Ethiopian highland (Lake Tana) rains into Sudan, cresting at Khartoum in the July-September flood season. Record 2020 levels inundated riverside districts and affected roughly 875,000 people nationwide.",
       "languages": [
         "ar",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.0742,
+        "true_skill_statistic": 0.926,
+        "days_above_warning_pct": 8.07,
+        "days_above_flood_pct": 0.35,
+        "cell_type": "channel",
+        "coefficient_of_variation": 0.948,
+        "record_max_m3s": 14858.4,
+        "calibrated_at": "2026-07-29"
+      }
     },
     {
       "id": "omo",
@@ -170,15 +345,41 @@
         "latitude": 7.0,
         "longitude": 37.3
       },
-      "flood_threshold_m3s": 900,
-      "warning_threshold_m3s": 700,
-      "historical_median_m3s": 250,
+      "flood_threshold_m3s": 4716.1,
+      "warning_threshold_m3s": 4101.0,
+      "historical_median_m3s": 1389.0,
       "description": "The lower Omo floods the South Omo Zone around Omorate before draining into Lake Turkana. Seasonal overbank flooding repeatedly displaces Dassanech and Nyangatom agro-pastoralist communities, notably in 2019 and 2023.",
       "languages": [
         "dsh",
         "am",
         "en"
-      ]
+      ],
+      "peak_season_months": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "model_confidence": "high",
+      "calibration": {
+        "source": "Copernicus GloFAS v4 via Open-Meteo Flood API",
+        "reanalysis_period": "1992-01-01/2025-12-31",
+        "years": 29,
+        "method": "warning = TSS-optimal against documented floods; flood = max(median event peak, p98 of daily flow, 1.15x warning); median = model median",
+        "ground_truth_events": 3,
+        "probability_of_detection": 1.0,
+        "false_alarm_rate": 0.0062,
+        "true_skill_statistic": 0.994,
+        "days_above_warning_pct": 0.78,
+        "days_above_flood_pct": 0.09,
+        "cell_type": "channel",
+        "coefficient_of_variation": 0.711,
+        "record_max_m3s": 5727.0,
+        "calibrated_at": "2026-07-29"
+      }
     }
   ],
   "impact_data": {

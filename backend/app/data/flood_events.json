@@ -1,0 +1,177 @@
+{
+  "_readme": [
+    "Documented historical flood events, used as ground truth to calibrate and",
+    "validate basin thresholds. This file is the evidence base for every alert",
+    "level Tayari issues — scripts/calibrate_basins.py derives thresholds from it",
+    "and scripts/validate_thresholds.py re-checks them.",
+    "",
+    "To add a basin you MUST add events for it here first. A basin with no",
+    "documented events cannot be threshold-calibrated, and the calibration script",
+    "will refuse to emit alert levels for it rather than invent numbers.",
+    "",
+    "Windows are deliberately generous (a few weeks) because displacement",
+    "reporting lags the hydrograph peak. Each event needs a source."
+  ],
+  "events": {
+    "shabelle": [
+      {
+        "label": "Deyr floods 2023 (~500k displaced, Beledweyne inundated)",
+        "start": "2023-10-25",
+        "end": "2023-12-20",
+        "source": "OCHA Somalia Flood Response, Nov-Dec 2023"
+      },
+      {
+        "label": "Deyr floods 2019",
+        "start": "2019-10-15",
+        "end": "2019-12-05",
+        "source": "OCHA Somalia, Beledweyne displacement Oct-Nov 2019"
+      },
+      {
+        "label": "Gu floods 2018",
+        "start": "2018-04-15",
+        "end": "2018-05-20",
+        "source": "OCHA Somalia Gu 2018 flooding"
+      }
+    ],
+    "juba": [
+      {
+        "label": "Deyr floods 2023",
+        "start": "2023-10-25",
+        "end": "2023-12-20",
+        "source": "OCHA Somalia Flood Response 2023"
+      },
+      {
+        "label": "Deyr floods 2020",
+        "start": "2020-10-10",
+        "end": "2020-12-20",
+        "source": "OCHA Somalia Deyr 2020"
+      },
+      {
+        "label": "Gu floods 2018",
+        "start": "2018-04-15",
+        "end": "2018-05-25",
+        "source": "OCHA Somalia Gu 2018"
+      }
+    ],
+    "tana": [
+      {
+        "label": "Kenya floods Apr-May 2024",
+        "start": "2024-04-10",
+        "end": "2024-06-05",
+        "source": "Kenya NDOC / IFRC Kenya Floods 2024"
+      },
+      {
+        "label": "Kenya floods Nov 2023 (El Nino OND)",
+        "start": "2023-11-01",
+        "end": "2023-12-20",
+        "source": "IFRC Kenya Floods Nov 2023"
+      },
+      {
+        "label": "Kenya floods Apr-May 2018",
+        "start": "2018-04-10",
+        "end": "2018-06-05",
+        "source": "Kenya Red Cross 2018 floods, Tana River County"
+      }
+    ],
+    "nzoia": [
+      {
+        "label": "Budalangi floods 2020",
+        "start": "2020-04-15",
+        "end": "2020-06-20",
+        "source": "Kenya Red Cross, Busia/Bunyala flooding 2020"
+      },
+      {
+        "label": "Kenya floods Apr-May 2024",
+        "start": "2024-04-10",
+        "end": "2024-06-05",
+        "source": "Kenya NDOC 2024"
+      },
+      {
+        "label": "Budalangi floods OND 2019",
+        "start": "2019-10-15",
+        "end": "2019-12-31",
+        "source": "Kenya Red Cross OND 2019 short rains flooding"
+      }
+    ],
+    "awash": [
+      {
+        "label": "Afar floods 2020",
+        "start": "2020-07-25",
+        "end": "2020-09-30",
+        "source": "OCHA Ethiopia, Afar region flooding 2020"
+      },
+      {
+        "label": "Afar floods 2023",
+        "start": "2023-07-25",
+        "end": "2023-09-30",
+        "source": "OCHA Ethiopia Flood Update 2023"
+      },
+      {
+        "label": "Afar floods 2024",
+        "start": "2024-07-25",
+        "end": "2024-09-20",
+        "source": "OCHA Ethiopia Flood Update 2024"
+      }
+    ],
+    "white_nile": [
+      {
+        "label": "Jonglei floods 2020",
+        "start": "2020-07-15",
+        "end": "2020-12-31",
+        "source": "OCHA South Sudan Flood Snapshot 2020"
+      },
+      {
+        "label": "Jonglei floods 2021",
+        "start": "2021-07-15",
+        "end": "2021-12-31",
+        "source": "OCHA South Sudan Flood Snapshot 2021"
+      },
+      {
+        "label": "Jonglei floods 2022",
+        "start": "2022-07-15",
+        "end": "2022-12-31",
+        "source": "OCHA South Sudan Flood Snapshot 2022"
+      }
+    ],
+    "blue_nile": [
+      {
+        "label": "Sudan record floods 2020 (~875k affected)",
+        "start": "2020-08-10",
+        "end": "2020-10-05",
+        "source": "OCHA Sudan Flash Update, Sep 2020"
+      },
+      {
+        "label": "Sudan floods 2019",
+        "start": "2019-08-10",
+        "end": "2019-10-05",
+        "source": "OCHA Sudan 2019 flooding"
+      },
+      {
+        "label": "Sudan floods 2022",
+        "start": "2022-08-10",
+        "end": "2022-10-05",
+        "source": "OCHA Sudan 2022 flooding"
+      }
+    ],
+    "omo": [
+      {
+        "label": "Lower Omo floods 2019",
+        "start": "2019-08-10",
+        "end": "2019-10-20",
+        "source": "OCHA Ethiopia, South Omo displacement 2019"
+      },
+      {
+        "label": "Lower Omo floods 2023",
+        "start": "2023-08-01",
+        "end": "2023-10-20",
+        "source": "OCHA Ethiopia Flood Update 2023"
+      },
+      {
+        "label": "Lower Omo floods 2021",
+        "start": "2021-08-01",
+        "end": "2021-10-20",
+        "source": "OCHA Ethiopia, South Omo Zone flooding 2021"
+      }
+    ]
+  }
+}
