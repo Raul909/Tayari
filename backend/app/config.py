@@ -34,7 +34,18 @@ class Settings(BaseSettings):
 
     # Database & Auth
     database_url: str = "sqlite+aiosqlite:///./tayari.db"
+    # Supabase auth. Two signing schemes are supported so either a legacy or a
+    # migrated project works:
+    #   • Legacy: HS256 with the shared JWT secret (SUPABASE_JWT_SECRET).
+    #   • Current: asymmetric keys (ES256/RS256) verified against the project's
+    #     public JWKS endpoint (SUPABASE_JWKS_URL).
+    # verify_supabase_token() picks the right one per token. The secret key is
+    # NEVER sent to the browser — backend-only, for any future admin API calls.
     supabase_jwt_secret: Optional[str] = None
+    supabase_url: Optional[str] = None
+    supabase_jwks_url: Optional[str] = None
+    supabase_publishable_key: Optional[str] = None
+    supabase_secret_key: Optional[str] = None
 
     # External APIs (routed through Cloudflare Worker proxy to avoid Render rate limits)
     flood_api_base: str = "https://tayari-pinger.indialayers-dev.workers.dev/flood"

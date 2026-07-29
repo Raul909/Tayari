@@ -27,7 +27,7 @@ asyncpg==0.29.0
 greenlet>=3.0.0  # required by SQLAlchemy's async engine
 
 # Auth (Supabase JWT verification) & multipart uploads
-PyJWT==2.8.0
+PyJWT[crypto]==2.8.0
 python-multipart==0.0.9
 
 # Rate limiting
