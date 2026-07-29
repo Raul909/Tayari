@@ -58,6 +58,11 @@ FLOOD_GLOSSARY = {
     Language.OROMO: "flood = 'lolaa' (NOT 'dhihaa', which means west); people = 'namoota' (NEVER 'olola', which means propaganda); boats = 'bidiruu' (never 'galaasaa'); schools = 'manneen barnootaa'; health facilities = 'buufataalee fayyaa'; markets = 'gabaa'",
     Language.AMHARIC: "flood = 'ጎርፍ'; people = 'ሰዎች'; boats = 'ጀልባዎች'; schools = 'ትምህርት ቤቶች'; health facilities = 'የጤና ተቋማት'; markets = 'ገበያዎች'",
     Language.ARABIC: "flood = 'فيضان'; people = 'أشخاص'; boats = 'قوارب'; schools = 'مدارس'; health facilities = 'مرافق صحية'; markets = 'أسواق'",
+    # Somali & Swahili terms are taken from the repo's human-reviewed advisory
+    # templates below, so the model is steered to the exact vocabulary a native
+    # reader expects rather than a plausible-but-wrong synonym.
+    Language.SOMALI: "flood = 'daad'; people = 'dad'; river = 'webi'; livestock = 'xoolo'; boats = 'doonyo'; schools = 'dugsiyo'; health facilities = 'xarumo caafimaad'; markets = 'suuqyo'; high ground = 'dhul sare'",
+    Language.SWAHILI: "flood = 'mafuriko'; people = 'watu'; river = 'mto'; livestock = 'mifugo'; boats = 'mashua'; schools = 'shule'; health facilities = 'vituo vya afya'; markets = 'masoko'; high ground = 'ardhi ya juu'",
 }
 
 ROLE_DESCRIPTIONS = {
@@ -174,6 +179,15 @@ _ENGLISH_LEAK_WORDS = frozenset({
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     "january", "february", "march", "april", "june", "july", "august",
     "september", "october", "november", "december",
+    # High-value safety words that have leaked in real output ("imminent" survived
+    # into a Somali advisory). Exact English spellings — chosen not to collide with
+    # native words in the Latin-script target languages — so a leak means the model
+    # genuinely failed to translate the word, and a retry is warranted.
+    "imminent", "evacuated", "shelter", "danger", "dangerous", "emergency",
+    "rescue", "damage", "elderly", "children", "family", "families", "homes",
+    "houses", "safety", "urgent", "secure", "relocate", "harvest", "crops",
+    "seeds", "documents", "supplies", "medicine", "hospital", "clinic", "clinics",
+    "bridge", "bridges", "drinking", "shelters", "downstream", "upstream",
 })
 
 _LABELS_RE = re.compile(r"^\s*(TITLE|BODY|ACTIONS)\s*:", re.IGNORECASE | re.MULTILINE)
