@@ -168,6 +168,12 @@ _ENGLISH_LEAK_WORDS = frozenset({
     "warning", "level", "risk", "your", "will", "livestock", "grain", "ground",
     "prepare", "move", "expected", "threshold", "discharge", "between", "flooding",
     "rising", "falling", "evacuate", "evacuation", "immediately", "boats",
+    # Weekday and month names are the most common untranslated leak in the danger
+    # window ("between Thursday and Saturday"). The translation prompt explicitly
+    # forbids them, so catching them here triggers the corrective retry it expects.
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "june", "july", "august",
+    "september", "october", "november", "december",
 })
 
 _LABELS_RE = re.compile(r"^\s*(TITLE|BODY|ACTIONS)\s*:", re.IGNORECASE | re.MULTILINE)
