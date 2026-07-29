@@ -106,7 +106,7 @@ export default function FeedbackModal({ onClose }) {
                 onClick={handleSubmit}
                 disabled={submitting || !rating}
               >
-                {submitting ? 'Submitting...' : 'Continue >'}
+                {submitting ? 'Submitting…' : 'Send Feedback'}
               </button>
             </div>
             
