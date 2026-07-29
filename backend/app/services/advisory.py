@@ -30,6 +30,14 @@ except ImportError:
 # Advisory cache (risk_level + role + language → advisory)
 _advisory_cache: dict[str, tuple[Advisory, datetime]] = {}
 CACHE_TTL_HOURS = 6
+# English-base cache (basin + risk_level + role → raw TITLE/BODY/ACTIONS block).
+# Every language for the same situation translates from ONE English base, so a
+# multilingual burst pays for the English generation once instead of per language
+# — roughly halving Groq token use on translations (fewer quota-exhaustion
+# template fallbacks) and keeping all language versions mutually consistent. Kept
+# separate from _advisory_cache so it never interferes with the user-facing
+# English advisory (which also carries a voice note).
+_english_base_cache: dict[str, tuple[str, datetime]] = {}
 # Template fallbacks are served only while Groq is unavailable. Cache them for a
 # short window (not the full 6 h) so a transient outage or rate-limit doesn't
 # poison the cache with a degraded template long after the LLM has recovered.
@@ -401,6 +409,41 @@ async def _store_persisted_advisory(cache_key: str, advisory: Advisory) -> None:
         logger.warning(f"Advisory DB cache write failed ({e}); ignoring")
 
 
+def _english_base_key(risk: FloodRiskScore, role: UserRole) -> str:
+    """Cache key for the English base shared by every language of one situation."""
+    return f"{risk.basin_id}_{risk.risk_level}_{role}"
+
+
+def _advisory_to_block(advisory: Advisory) -> str:
+    """Render a parsed Advisory back into the TITLE/BODY/ACTIONS block a translator expects."""
+    lines = [f"TITLE: {advisory.title}", f"BODY: {advisory.body}", "ACTIONS:"]
+    lines += [f"- {a}" for a in advisory.actions]
+    return "\n".join(lines)
+
+
+async def _get_cached_english_block(risk: FloodRiskScore, role: UserRole) -> Optional[str]:
+    """
+    Return a cached AI English advisory (as a TITLE/BODY/ACTIONS block) to reuse
+    as a translation source, or None. Checks the in-memory base cache first, then
+    reuses any English advisory a user already requested (persisted in the DB, so
+    the base survives process restarts). Only AI-generated English is reused — a
+    template base would translate its emoji/label title oddly.
+    """
+    key = _english_base_key(risk, role)
+    hit = _english_base_cache.get(key)
+    if hit and datetime.utcnow() - hit[1] < timedelta(hours=CACHE_TTL_HOURS):
+        return hit[0]
+    en_key = f"{risk.basin_id}_{risk.risk_level}_{role}_{Language.ENGLISH}"
+    persisted = await _load_persisted_advisory(en_key)
+    if persisted is not None:
+        advisory_db, age = persisted
+        if advisory_db.ai_generated and age < timedelta(hours=CACHE_TTL_HOURS):
+            block = _advisory_to_block(advisory_db)
+            _english_base_cache[key] = (block, datetime.utcnow() - age)
+            return block
+    return None
+
+
 async def _generate_with_groq(
     risk: FloodRiskScore,
     impact: ImpactAssessment,
@@ -434,8 +477,20 @@ async def _generate_with_groq(
         if risk.probabilities_7day else None
     )
 
-    # STEP 1: Generate Base Advisory in English
-    english_prompt = f"""You are the advisory writer for Tayari, a flood early-warning system for East Africa.
+    # STEP 1: Obtain the English base advisory. For a non-English request, reuse a
+    # cached English base for this basin/risk/role when one exists — so a
+    # multilingual burst generates the English once and every language translates
+    # from the same source (halves translation token cost; keeps versions
+    # consistent). Falls through to a fresh generation when nothing is cached.
+    english_text = None
+    if language != Language.ENGLISH:
+        try:
+            english_text = await _get_cached_english_block(risk, role)
+        except Exception as e:
+            logger.warning(f"English-base cache lookup failed ({e}); regenerating")
+
+    if english_text is None:
+        english_prompt = f"""You are the advisory writer for Tayari, a flood early-warning system for East Africa.
 SITUATION — {basin_name} ({river_name}, {country}), {datetime.utcnow():%d %b %Y}:
 - Risk level: {risk.risk_level.value} | Probability of flooding (next 3 days): {risk.probability * 100:.0f}%
 - Day-by-day probability (next 7 days): {', '.join(f'D{i+1}: {p*100:.0f}%' for i, p in enumerate(risk.probabilities_7day))}
@@ -462,14 +517,19 @@ ACTIONS:
 - [action 2]
 - [action 3]
 """
-    response_en = await asyncio.to_thread(
-        client.chat.completions.create,
-        model=settings.groq_model,
-        messages=[{"role": "user", "content": english_prompt}],
-        max_tokens=1024,
-        temperature=0.7,
-    )
-    english_text = response_en.choices[0].message.content.strip()
+        response_en = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=settings.groq_model,
+            messages=[{"role": "user", "content": english_prompt}],
+            max_tokens=1024,
+            temperature=0.7,
+        )
+        english_text = response_en.choices[0].message.content.strip()
+        # Cache this English base so sibling-language requests for the same
+        # situation reuse it instead of regenerating it.
+        _english_base_cache[_english_base_key(risk, role)] = (
+            english_text, datetime.utcnow()
+        )
 
     # The language the reader actually receives. Usually the requested one, but
     # for languages the model provably cannot write (see FALLBACK_LANGUAGE) it
