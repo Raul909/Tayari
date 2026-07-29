@@ -43,6 +43,16 @@ def _normalize_db_url(url: str) -> tuple[str, dict]:
     connect_args instead. We rewrite the URL accordingly so operators can paste
     the connection string Neon gives them verbatim into DATABASE_URL.
     """
+    # Guard: catch the common mistake of pasting a Supabase/Neon *REST API*
+    # URL (https://…) instead of the Postgres *connection string*.  Without
+    # this, SQLAlchemy throws a confusing "Can't load plugin: …:https".
+    if url.startswith("https://") or url.startswith("http://"):
+        raise ValueError(
+            f"DATABASE_URL looks like an HTTP(S) URL, not a database "
+            f"connection string.  Expected something like "
+            f"'postgresql://user:pass@host:5432/db', got: {url[:80]}…"
+        )
+
     connect_args: dict = {}
 
     # Postgres → force the asyncpg driver.
