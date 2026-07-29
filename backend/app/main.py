@@ -98,8 +98,15 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    if request.method == "GET" and response.status_code == 200:
-        # Cache GET endpoints for 60 seconds on the client / CDN edge
+    if (
+        request.method == "GET"
+        and response.status_code == 200
+        and not request.url.path.startswith("/health")
+    ):
+        # Cache GET endpoints for 60 seconds on the client / CDN edge. Health
+        # checks are exempt: /health is Render's liveness probe and /health/db
+        # must actually reach the database on every hit (see below), so neither
+        # may be served from a cache.
         response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
     return response
 
@@ -168,6 +175,10 @@ async def health():
     Health check. Includes the deployed git commit (Render injects
     RENDER_GIT_COMMIT) so "which code is actually live?" is a one-request
     question instead of a guessing game.
+
+    Deliberately does NOT touch the database — this is Render's liveness probe,
+    and a transient DB hiccup must never make Render recycle a healthy instance.
+    Use /health/db for a database-touching keep-alive.
     """
     import os
     return {
@@ -175,3 +186,26 @@ async def health():
         "version": settings.app_version,
         "commit": os.getenv("RENDER_GIT_COMMIT", "unknown")[:12],
     }
+
+
+@app.get("/health/db")
+async def health_db():
+    """
+    Database keep-alive. Runs a trivial `SELECT 1` so a serverless/managed
+    Postgres (Supabase) never pauses from inactivity — the Cloudflare pinger
+    hits this on its cron. Kept separate from /health so a DB problem can't
+    fail Render's liveness probe. Returns 503 (not 500) if the DB is unreachable
+    so the pinger logs it without implying the app itself is down.
+    """
+    from sqlalchemy import text
+    from app.db import SessionLocal
+    try:
+        async with SessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "reachable"}
+    except Exception as e:
+        logger.warning(f"DB keep-alive failed: {e}")
+        return JSONResponse(
+            {"status": "error", "database": "unreachable", "detail": str(e)[:150]},
+            status_code=503,
+        )
