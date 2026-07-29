@@ -14,6 +14,7 @@ phone lands in the *same* Supabase database the dashboard reads from, and vice
 versa — that is what "one database for both apps" means here.
 """
 
+import asyncio
 import logging
 from typing import AsyncGenerator
 
@@ -98,15 +99,41 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create tables if they don't exist. Called once on startup."""
+    """Create tables if they don't exist. Called once on startup.
+
+    Retries up to 3 times with exponential backoff so a transient network
+    blip (common on Render free tier waking up) doesn't kill the whole
+    process.  If the DB is genuinely unreachable after all retries, the
+    app still starts — the /health endpoint keeps Render happy, and
+    requests that need the DB will fail individually with 503s.
+    """
     # Import models so they're registered on Base.metadata before create_all.
     from app.models import db_models  # noqa: F401
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     backend = "Supabase/Postgres" if "asyncpg" in _db_url else "SQLite"
-    logger.info(f"   Database: {backend} ready ({_db_url.split('@')[-1]})")
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info(f"   Database: {backend} ready ({_db_url.split('@')[-1]})")
+            return
+        except Exception as exc:
+            last_err = exc
+            wait = 2 ** attempt  # 2, 4, 8 seconds
+            logger.warning(
+                f"   DB init attempt {attempt}/3 failed: {exc!r}  "
+                f"— retrying in {wait}s…"
+            )
+            await asyncio.sleep(wait)
+
+    # All retries exhausted — log loudly but let the app start so Render's
+    # /health probe doesn't trigger an infinite crash-restart loop.
+    logger.error(
+        f"   Database: {backend} UNREACHABLE after 3 attempts "
+        f"({_db_url.split('@')[-1]}). Last error: {last_err!r}.  "
+        f"The app will start without DB — endpoints needing it will return 503."
+    )
 
 
 async def close_db() -> None:
