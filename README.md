@@ -31,7 +31,7 @@ Tayari is **free to use** and open source, because an early warning should never
 - 🔮 **Predicts** river flooding 1–7 days ahead using a LightGBM model (with a calibrated heuristic fallback) on Open-Meteo's GloFAS river discharge and rainfall forecasts.
 - 🌍 **Overlays** impact data, estimating the population and critical infrastructure (schools, clinics, roads) at risk in each basin.
 - 🗣️ **Translates** technical jargon into role-specific advisories (including for teachers, students, farmers, and pastoralists) in **English, Somali, Swahili, Amharic, and Oromo** using an LLM — with pre-written template fallbacks so warnings go out even if the AI is down.
-- 📱 **Delivers** alerts via the Africa's Talking SMS gateway, a fast Next.js PWA dashboard for coordinators, and a Flutter mobile app for the field.
+- 📱 **Delivers** alerts via the Twilio SMS gateway, a fast Next.js PWA dashboard for coordinators, and a Flutter mobile app for the field.
 - 📸 **Listens** — community members submit geotagged photo reports of ground conditions, and coordinators or neighbours respond with advice threads (safe routes, closed bridges, who to contact) that everyone can see, closing the loop between forecast and reality.
 - 🔐 **Secure Authentication** with a seamless, end-to-end user experience, including a comprehensive "Forgot Password" flow following modern UX industry standards.
 
@@ -68,18 +68,18 @@ graph TD
 
     subgraph Alert Delivery
         J --> K[Next.js PWA Dashboard<br/>tayari.pages.dev]
-        J --> L[Africa's Talking<br/>SMS Gateway]
+        J --> L[Twilio<br/>SMS Gateway]
         J --> M[Flutter Mobile App<br/>offline-first, APK on GitHub Releases]
     end
 
     subgraph Feedback Loop
         M -->|Geotagged Photo Reports| B
         K -->|Advice threads on reports| B
-        B -->|Reports · Advice · Alert log| DB[(Neon Postgres<br/>durable shared store)]
+        B -->|Reports · Advice · Alert log| DB[(Supabase Postgres<br/>durable shared store)]
     end
 ```
 
-Community reports, their advice threads, and sent-alert history are persisted to **Neon (serverless Postgres)** through the backend. Both the web dashboard and the mobile app write and read through the same API, so a report filed from a phone in the field shows up on a coordinator's dashboard — and vice versa — backed by one shared database. Locally it falls back to SQLite so you can run everything with zero setup.
+Community reports, their advice threads, and sent-alert history are persisted to **Supabase (managed Postgres)** through the backend. Both the web dashboard and the mobile app write and read through the same API, so a report filed from a phone in the field shows up on a coordinator's dashboard — and vice versa — backed by one shared database. Supabase also handles user authentication (sign-up, login, and password reset). Locally the database falls back to SQLite so you can run everything with zero setup.
 
 A small **Cloudflare Worker** does double duty: it proxies Open-Meteo requests (avoiding upstream rate limits) and pings the Render backend on a cron schedule so free-tier cold starts never delay a warning.
 
@@ -112,7 +112,8 @@ If you want to spin it up locally, you'll need a couple of API keys. Don't worry
 
 ### Prerequisites
 - **Groq API Key**: Used to generate the AI advisories (free at [console.groq.com](https://console.groq.com)). Without one, Tayari falls back to built-in advisory templates.
-- **Africa's Talking API Key**: Used for SMS delivery (a free sandbox account works perfectly).
+- **Twilio credentials** *(optional)*: Account SID, Auth Token, and a From number for real SMS delivery. Without them, sends are simulated so the flow still works end-to-end; on a Twilio trial account you can only text numbers you've verified.
+- **Supabase project** *(optional, for accounts + durable storage)*: `DATABASE_URL` (Postgres connection string) and `SUPABASE_JWT_SECRET`. Without them the backend uses local SQLite and runs in guest mode.
 
 ### Running the Backend (FastAPI)
 ```bash
@@ -155,10 +156,10 @@ I chose tools that are fast, reliable, and perfectly suited for a machine-learni
 - **Backend:** FastAPI (Python) — *Blazing fast, async-first, and natively speaks ML.*
 - **Frontend (Web):** Next.js 14 (App Router) & Vanilla CSS — *SSR for performance, PWA ready, and a custom glassmorphism design system.*
 - **Frontend (Mobile):** Flutter & Riverpod — *Native ARM performance, rendering vector maps instantly.*
-- **Databases:** Isar Database — *Ultra-fast offline-first NoSQL caching for the mobile app.*
+- **Databases:** Supabase (managed Postgres) for the shared backend store & auth, and Isar — *ultra-fast offline-first NoSQL caching for the mobile app.*
 - **ML Model:** LightGBM — *Fast training on tabular data without needing a GPU, backed by a calibrated heuristic so predictions never go dark.*
 - **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
-- **AI & Comms:** Groq API (Llama 3.3 70B) & Africa's Talking — *Best-in-class multilingual text generation and reliable East African SMS delivery.*
+- **AI & Comms:** Groq API (Llama 3.3 70B) & Twilio — *Best-in-class multilingual text generation and reliable SMS delivery.*
 - **Hosting:** Cloudflare Pages (web, free at [tayari.pages.dev](https://tayari.pages.dev)), Render (API), and a Cloudflare Worker for proxying + keep-alive.
 
 ---
