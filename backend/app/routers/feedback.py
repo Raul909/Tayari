@@ -8,6 +8,13 @@ router = APIRouter()
 
 FEEDBACK_EMAIL = "contact@launchpixel.in"
 
+# FormSubmit.co refuses requests that arrive without a browser-style referring
+# origin ("FormSubmit will not work in pages browsed as HTML files"). A browser
+# sends this automatically; a server-side httpx call must set it explicitly, or
+# the POST is rejected with HTTP 200 + {"success": "false"}. Use the Tayari web
+# origin (the same domain the activated form is registered against).
+_FORMSUBMIT_ORIGIN = "https://tayari.pages.dev"
+
 
 class FeedbackCreate(BaseModel):
     rating: int
@@ -56,8 +63,24 @@ async def _send_feedback_email(
             res = await client.post(
                 f"https://formsubmit.co/ajax/{FEEDBACK_EMAIL}",
                 json=payload,
+                # Required — without a referring origin FormSubmit rejects the
+                # POST (still HTTP 200, but body {"success": "false"}).
+                headers={
+                    "Origin": _FORMSUBMIT_ORIGIN,
+                    "Referer": f"{_FORMSUBMIT_ORIGIN}/",
+                },
             )
             res.raise_for_status()
+            # FormSubmit signals real failures in the JSON body, not the HTTP
+            # status: an unactivated form or a missing origin returns 200 with
+            # {"success": "false"}. Treat that as a delivery failure so the
+            # caller doesn't report success for an email that never went out.
+            data = res.json()
+        if str(data.get("success", "")).lower() != "true":
+            logger.error(
+                "FormSubmit.co did not deliver: %s", data.get("message", data)
+            )
+            return False
         logger.info("Feedback email sent to %s via FormSubmit.co.", FEEDBACK_EMAIL)
         return True
     except Exception as e:
