@@ -210,5 +210,13 @@ export async function sendFeedback(rating, subject, comment) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Could not deliver feedback. Please try again later.');
+  // FormSubmit reports real failures in the body, not the HTTP status: an
+  // unactivated form or a rejected request returns 200 with {"success":"false"}.
+  // The browser attaches the Origin header automatically, so an activated form
+  // succeeds here — but verify rather than trust the 200.
+  const body = await res.json().catch(() => ({}));
+  if (String(body.success).toLowerCase() !== 'true') {
+    throw new Error('Could not deliver feedback. Please try again later.');
+  }
   return { success: true, message: 'Feedback sent (direct delivery)' };
 }
