@@ -8,6 +8,7 @@ import '../../providers/basin_provider.dart';
 import '../../providers/db_provider.dart';
 import '../../providers/prefs_provider.dart';
 import '../theme.dart';
+import '../widgets/advisory_chat.dart';
 import 'report_screen.dart';
 
 class BasinDetailScreen extends ConsumerStatefulWidget {
@@ -187,6 +188,17 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Follow-up chat (max 5 questions), keyed so the thread resets
+                  // when the audience or language of the advisory changes.
+                  AdvisoryChat(
+                    key: ValueKey(
+                      '${widget.basin.basinId}_${selectedRole}_$selectedLanguage',
+                    ),
+                    basinId: widget.basin.basinId,
+                    role: selectedRole,
+                    language: selectedLanguage,
                   ),
                 ],
                 const SizedBox(height: 40),

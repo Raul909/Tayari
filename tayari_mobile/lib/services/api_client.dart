@@ -151,8 +151,39 @@ class ApiClient {
     }
   }
 
+  /// Ask a follow-up question about a basin's advisory. Mirrors the web chat:
+  /// the backend caps a session at 5 user questions and returns how many
+  /// remain. Online-only — throws if the backend can't be reached (the UI
+  /// surfaces that as a retry-able error, since there's no offline chat model).
+  ///
+  /// [sessionMessages] is the prior turns as `[{role: 'user'|'ai', content}]`,
+  /// NOT including the message being sent now. Returns the raw response
+  /// `{reply, messages_remaining}`.
+  Future<Map<String, dynamic>> sendChatMessage(
+    String basinId,
+    String message, {
+    required String role,
+    required String language,
+    List<Map<String, String>> sessionMessages = const [],
+    String? userId,
+  }) async {
+    final response = await _dio.post('/chat/$basinId', data: {
+      'message': message,
+      'role': role,
+      'language': language,
+      'session_messages': sessionMessages,
+      'user_id': userId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   /// Where feedback is delivered when the backend is unreachable.
   static const _feedbackEmail = 'contact@launchpixel.in';
+
+  /// FormSubmit.co rejects requests without a browser-style referring origin
+  /// (still HTTP 200, but body {"success": "false"}). Send the Tayari web
+  /// origin the activated form is registered against so the POST is accepted.
+  static const _formsubmitOrigin = 'https://tayari.pages.dev';
 
   /// Human-readable labels for the 1–5 opinion rating, matching the web app
   /// and backend so an email reads the same wherever the feedback came from.
@@ -217,9 +248,19 @@ class ApiClient {
         'message': message,
         '_subject': 'Tayari Feedback - $subjectText ($ratingText)',
       },
+      options: Options(headers: {
+        // Without a referring origin FormSubmit refuses the POST.
+        'Origin': _formsubmitOrigin,
+        'Referer': '$_formsubmitOrigin/',
+      }),
     );
+    // FormSubmit reports real failures in the body, not the HTTP status: an
+    // unactivated form or missing origin returns 200 with {"success":"false"}.
     final code = res.statusCode ?? 0;
-    if (code < 200 || code >= 400) {
+    final data = res.data;
+    final delivered = data is Map &&
+        data['success'].toString().toLowerCase() == 'true';
+    if (code < 200 || code >= 400 || !delivered) {
       throw Exception('Could not deliver feedback. Please try again later.');
     }
   }

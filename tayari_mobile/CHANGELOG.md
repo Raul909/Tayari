@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.7.0] - 2026-07-30
+### Added
+- **Ask about the advisory (chat).** The basin screen now has the same
+  follow-up chat as the web dashboard: tap *Ask about this advisory* to ask up
+  to 5 questions about the forecast — *"What should I do with my livestock?"* —
+  and get answers written for your selected audience and language. The remaining
+  question count is shown, and the thread resets when you change audience or
+  language. Chat needs a connection (the model runs on the server); when offline
+  it says so instead of failing silently.
+
+### Fixed
+- **Feedback now actually reaches the team.** Feedback submitted from the app was
+  being accepted but never delivered — the email service was silently rejecting
+  it because the app didn't send a web origin, and a "success" HTTP code hid the
+  failure. The app now sends the required origin and checks the service's real
+  result, so your rating and comments land in the team's inbox (with a direct
+  fallback if the backend is unreachable). *(You may need v1.7.0 for this;
+  earlier builds could not deliver feedback.)*
+
 ## [1.6.0] - 2026-07-30
 ### Added
 - **Send feedback from the app.** A new feedback sheet — reachable from the
