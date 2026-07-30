@@ -151,6 +151,79 @@ class ApiClient {
     }
   }
 
+  /// Where feedback is delivered when the backend is unreachable.
+  static const _feedbackEmail = 'contact@launchpixel.in';
+
+  /// Human-readable labels for the 1–5 opinion rating, matching the web app
+  /// and backend so an email reads the same wherever the feedback came from.
+  static const _ratingLabels = {
+    1: 'Angry 😠',
+    2: 'Sad 😞',
+    3: 'Neutral 😐',
+    4: 'Happy 🙂',
+    5: 'Very Happy 😄',
+  };
+
+  /// Submit user feedback (opinion rating + optional subject/comment).
+  ///
+  /// Primary path: POST to the backend `/feedback`, which emails
+  /// contact@launchpixel.in via FormSubmit.co and best-effort saves to the DB.
+  ///
+  /// Fallback: if the backend is unreachable (Render cold-start, DB down, etc.),
+  /// post straight to FormSubmit.co from the device so feedback is never lost.
+  /// A 4xx from the backend (e.g. an out-of-range rating) is a real rejection —
+  /// it's surfaced to the caller instead of silently retried.
+  Future<void> submitFeedback({
+    required int rating,
+    String? subject,
+    String? comment,
+  }) async {
+    // --- Try the backend first ---
+    try {
+      await _dio.post('/feedback', data: {
+        'rating': rating,
+        'subject': subject,
+        'comment': comment,
+      });
+      return; // 2xx — delivered.
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      // 4xx (e.g. a bad rating) is a genuine rejection — surface it, no retry.
+      if (status != null && status >= 400 && status < 500) {
+        final data = e.response?.data;
+        final detail = data is Map ? data['detail']?.toString() : null;
+        throw Exception(detail ?? 'Feedback rejected: $status');
+      }
+      // Network error or 5xx → fall through to direct FormSubmit.co delivery.
+    }
+
+    // --- Fallback: deliver straight to FormSubmit.co ---
+    final ratingText = _ratingLabels[rating] ?? '$rating';
+    final subjectText = (subject == null || subject.isEmpty) ? 'General' : subject;
+    final commentText =
+        (comment == null || comment.isEmpty) ? 'No comment provided.' : comment;
+    final message = 'New Feedback Received!\n\n'
+        'Opinion Rating: $ratingText\n'
+        'Subject: $subjectText\n\n'
+        'Comment:\n$commentText';
+
+    // A fresh Dio so the app's `/api` baseUrl isn't prepended to the absolute
+    // FormSubmit.co URL, and so the app-wide timeouts/interceptors don't apply.
+    final res = await Dio().post(
+      'https://formsubmit.co/ajax/$_feedbackEmail',
+      data: {
+        'rating': ratingText,
+        'subject': subjectText,
+        'message': message,
+        '_subject': 'Tayari Feedback - $subjectText ($ratingText)',
+      },
+    );
+    final code = res.statusCode ?? 0;
+    if (code < 200 || code >= 400) {
+      throw Exception('Could not deliver feedback. Please try again later.');
+    }
+  }
+
   /// Direct Groq API fallback for advisory generation.
   Future<Map<String, dynamic>?> _getAdvisoryViaGroq(
       String basinId, String role, String language) async {

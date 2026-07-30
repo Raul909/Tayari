@@ -92,6 +92,14 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
           }
 
           final advisory = forecast.getAdvisory(selectedLanguage, selectedRole);
+          // When the backend couldn't write the requested language and fell back
+          // to a regional language or English, tell the reader why the advisory
+          // isn't in their language.
+          final deliveredLang =
+              forecast.getAdvisoryLanguage(selectedLanguage, selectedRole);
+          final fellBack = advisory != null &&
+              deliveredLang != null &&
+              deliveredLang != selectedLanguage;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -129,6 +137,10 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                if (fellBack) ...[
+                  _fallbackNote(deliveredLang, selectedLanguage),
+                  const SizedBox(height: 8),
+                ],
                 _card(
                   background: AppColors.risk(forecast.riskLevel)
                       .withValues(alpha: 0.08),
@@ -201,6 +213,39 @@ class _BasinDetailScreenState extends ConsumerState<BasinDetailScreen> {
           color: AppColors.textPrimary,
         ),
       );
+
+  /// Small banner shown when the advisory couldn't be written in the requested
+  /// language and the backend fell back to another one.
+  Widget _fallbackNote(String delivered, String requested) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.riskModerate.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border:
+            Border.all(color: AppColors.riskModerate.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.translate, size: 15, color: AppColors.riskModerate),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Shown in ${UserPrefs.languageLabel(delivered)} — '
+              "${UserPrefs.languageLabel(requested)} isn't available right now.",
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _card({required Widget child, Color? background, Color? borderColor}) {
     return Container(

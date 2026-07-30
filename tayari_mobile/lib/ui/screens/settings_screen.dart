@@ -5,6 +5,7 @@ import '../../models/user_prefs.dart';
 import '../../providers/basin_provider.dart';
 import '../../providers/prefs_provider.dart';
 import '../theme.dart';
+import '../widgets/feedback_sheet.dart';
 
 /// Where the owner sets their personal choices once. Everything the app shows —
 /// alerts, stats, and advice — then defaults to these until they change them.
@@ -110,6 +111,25 @@ class SettingsScreen extends ConsumerWidget {
             '${UserPrefs.languageLabel(prefs.language)}. '
             'These choices stay on this phone.',
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 28),
+
+          const _SectionLabel('Help us improve'),
+          const SizedBox(height: 8),
+          _Card(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.feedback_outlined,
+                  color: AppColors.accent),
+              title: const Text('Send feedback'),
+              subtitle: const Text(
+                'Rate the app and tell us what to improve.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+              ),
+              trailing: const Icon(Icons.chevron_right,
+                  color: AppColors.textMuted),
+              onTap: () => showFeedbackSheet(context),
+            ),
           ),
         ],
       ),

@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.6.0] - 2026-07-30
+### Added
+- **Send feedback from the app.** A new feedback sheet — reachable from the
+  toolbar on the home map and from *My settings* — lets you rate the app with a
+  quick emoji (angry → very happy), pick a subject (Bug, Suggestion, Other), and
+  add a comment. This mirrors the feedback tool on the web dashboard. Your
+  feedback goes to the team even when the backend is cold or offline: if the
+  server can't be reached the app delivers it directly, so nothing is lost.
+- **"Not in your language" notice.** When an advisory can't be written in the
+  language you asked for and the backend falls back to a regional language or
+  English, the basin screen now shows a small note — *"Shown in Amharic —
+  Daasanach isn't available right now."* — instead of silently switching
+  languages on you. The delivered language is remembered offline with the
+  cached advisory, so the notice is still accurate without a connection.
+
 ## [1.5.1] - 2026-07-19
 ### Added
 - **Right-to-left Arabic.** Advisories written in Arabic now display

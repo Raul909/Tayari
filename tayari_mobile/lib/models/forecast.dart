@@ -30,6 +30,13 @@ class Forecast {
   late List<String> advisoryKeys;
   late List<String> advisoryValues;
 
+  // The language the backend actually delivered for each cache key, parallel to
+  // advisoryKeys. The backend can fall back to a regional language or English
+  // when it can't write the requested one (e.g. Daasanach) — this lets the app
+  // tell the reader why the advisory isn't in their language. Empty string means
+  // "unknown" (e.g. an entry cached before this field existed).
+  List<String> advisoryLangValues = [];
+
   DateTime lastSynced = DateTime.now();
 
   String? getAdvisory(String language, String role) {
@@ -37,6 +44,18 @@ class Forecast {
     final index = advisoryKeys.indexOf(key);
     if (index != -1) {
       return advisoryValues[index];
+    }
+    return null;
+  }
+
+  /// The language actually delivered for this language/role advisory, or null
+  /// if unknown. Compare against the requested language to detect a fallback.
+  String? getAdvisoryLanguage(String language, String role) {
+    final key = "${language}_$role";
+    final index = advisoryKeys.indexOf(key);
+    if (index != -1 && index < advisoryLangValues.length) {
+      final lang = advisoryLangValues[index];
+      return lang.isEmpty ? null : lang;
     }
     return null;
   }

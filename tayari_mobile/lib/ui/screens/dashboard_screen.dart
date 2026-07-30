@@ -6,6 +6,7 @@ import '../../providers/basin_provider.dart';
 import '../../providers/db_provider.dart';
 import '../../providers/prefs_provider.dart';
 import '../theme.dart';
+import '../widgets/feedback_sheet.dart';
 import 'basin_detail_screen.dart';
 import 'community_reports_screen.dart';
 import 'settings_screen.dart';
@@ -123,6 +124,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 MaterialPageRoute(builder: (_) => const CommunityReportsScreen()),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.feedback_outlined),
+            tooltip: 'Send feedback',
+            onPressed: () => showFeedbackSheet(context),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),

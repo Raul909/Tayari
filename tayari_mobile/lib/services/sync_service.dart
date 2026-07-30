@@ -46,6 +46,10 @@ class SyncService {
       final risk = data['risk'] as Map<String, dynamic>;
       final impact = data['impact'] as Map<String, dynamic>;
       var advisoryText = _formatAdvisory(data['advisory']);
+      // The language the backend actually wrote in — it can fall back from an
+      // unsupported mother tongue to a regional language or English. Defaults to
+      // the requested language and is corrected from the advisory payload below.
+      var deliveredLang = _advisoryLanguage(data['advisory']) ?? language;
 
       // Some deployed backends omit the advisory from /forecasts (it lags the
       // committed code). When that happens, fetch it from the dedicated
@@ -53,7 +57,10 @@ class SyncService {
       // instead of an empty advisory card.
       if (advisoryText.isEmpty) {
         final adv = await _apiClient.getAdvisory(basinId, role, language);
-        if (adv != null) advisoryText = _formatAdvisory(adv['advisory']);
+        if (adv != null) {
+          advisoryText = _formatAdvisory(adv['advisory']);
+          deliveredLang = _advisoryLanguage(adv['advisory']) ?? deliveredLang;
+        }
       }
 
       final healthFacilities =
@@ -99,22 +106,42 @@ class SyncService {
           ..floodThreshold = floodThreshold
           ..lastSynced = DateTime.now();
 
-        // Update cached advisory dictionary (keyed by "language_role")
+        // Update cached advisory dictionary (keyed by "language_role"),
+        // keeping the delivered-language list aligned with the keys. Entries
+        // cached before advisoryLangValues existed are padded with "" (unknown).
         final cacheKey = "${language}_$role";
         final index = forecast.advisoryKeys.indexOf(cacheKey);
+        final langs = [...forecast.advisoryLangValues];
+        while (langs.length < forecast.advisoryKeys.length) {
+          langs.add('');
+        }
 
         if (index != -1) {
           forecast.advisoryValues[index] = advisoryText;
+          langs[index] = deliveredLang;
         } else {
           forecast.advisoryKeys = [...forecast.advisoryKeys, cacheKey];
           forecast.advisoryValues = [...forecast.advisoryValues, advisoryText];
+          langs.add(deliveredLang);
         }
+        forecast.advisoryLangValues = langs;
 
         await _isar.forecasts.put(forecast);
       });
     } catch (e) {
       debugPrint("Offline mode: Could not sync forecast. Using cached data. $e");
     }
+  }
+
+  /// The language the backend actually delivered the advisory in, if present.
+  /// Returns null when the advisory has no language field (older backends, or
+  /// the plain-string fallback shape).
+  String? _advisoryLanguage(dynamic advisory) {
+    if (advisory is Map && advisory['language'] != null) {
+      final lang = advisory['language'].toString().trim();
+      return lang.isEmpty ? null : lang;
+    }
+    return null;
   }
 
   /// The advisory arrives as an object; flatten it to readable text for caching.
