@@ -159,42 +159,22 @@ export async function sendChatMessage(basinId, message, role = 'general', langua
   return res.json();
 }
 
-/**
- * Submit user feedback.
- *
- * Primary path: POST to the backend, which emails contact@launchpixel.in via
- * FormSubmit.co *and* saves to the database.
- *
- * Fallback: if the backend is unreachable (Render cold-start, DB down, etc.),
- * send directly to FormSubmit.co from the browser so feedback is never lost.
- */
 const RATING_LABELS = { 1: 'Angry 😠', 2: 'Sad 😞', 3: 'Neutral 😐', 4: 'Happy 🙂', 5: 'Very Happy 😄' };
 
-export async function sendFeedback(rating, subject, comment) {
-  // --- Try backend first ---
-  try {
-    const res = await fetch(`${API_BASE}/api/feedback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rating, subject, comment }),
-    });
-    if (res.ok) return res.json();
-    // 4xx errors (e.g. bad rating) should surface immediately, don't fallback.
-    if (res.status >= 400 && res.status < 500) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `Feedback rejected: ${res.status}`);
-    }
-    // 5xx → fall through to FormSubmit.co fallback
-  } catch (err) {
-    // Network error or 5xx — fall through to direct delivery
-    if (err.message && !err.message.includes('Feedback rejected')) {
-      console.warn('Backend feedback failed, using FormSubmit.co fallback:', err.message);
-    } else {
-      throw err; // re-throw 4xx errors
-    }
-  }
+const FEEDBACK_EMAIL = 'contact@launchpixel.in';
 
-  // --- Fallback: send directly to FormSubmit.co ---
+/**
+ * Deliver a feedback email directly to contact@launchpixel.in via FormSubmit.co.
+ * Returns true only when FormSubmit confirms delivery.
+ *
+ * The browser is the reliable place to do this: it attaches the Origin header
+ * FormSubmit requires (JS can't set it), and — unlike the Render backend, whose
+ * datacenter IP FormSubmit blocks — a real browser can actually reach it.
+ * FormSubmit reports failures in the JSON body, not the HTTP status (an
+ * unactivated/rejected form returns 200 with {"success":"false"}), so we check
+ * the body rather than trusting the 200.
+ */
+async function deliverFeedbackViaFormSubmit(rating, subject, comment) {
   const ratingText = RATING_LABELS[rating] || String(rating);
   const subjectText = subject || 'General';
   const payload = {
@@ -204,19 +184,36 @@ export async function sendFeedback(rating, subject, comment) {
     _subject: `Tayari Feedback - ${subjectText} (${ratingText})`,
   };
 
-  const res = await fetch('https://formsubmit.co/ajax/contact@launchpixel.in', {
+  const res = await fetch(`https://formsubmit.co/ajax/${FEEDBACK_EMAIL}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('Could not deliver feedback. Please try again later.');
-  // FormSubmit reports real failures in the body, not the HTTP status: an
-  // unactivated form or a rejected request returns 200 with {"success":"false"}.
-  // The browser attaches the Origin header automatically, so an activated form
-  // succeeds here — but verify rather than trust the 200.
+  if (!res.ok) return false;
   const body = await res.json().catch(() => ({}));
-  if (String(body.success).toLowerCase() !== 'true') {
+  return String(body.success).toLowerCase() === 'true';
+}
+
+/**
+ * Submit user feedback.
+ *
+ * Email delivery goes straight to FormSubmit.co from the browser — the reliable
+ * path (see deliverFeedbackViaFormSubmit). In parallel we best-effort POST to
+ * the backend so the feedback is also recorded in the database for analytics;
+ * that call is fire-and-forget and its failure (cold start, DB down, or the
+ * backend's own blocked FormSubmit attempt) never fails the submission.
+ */
+export async function sendFeedback(rating, subject, comment) {
+  // Best-effort DB record — don't await, don't let it reject the submission.
+  fetch(`${API_BASE}/api/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating, subject, comment }),
+  }).catch(() => {});
+
+  const delivered = await deliverFeedbackViaFormSubmit(rating, subject, comment);
+  if (!delivered) {
     throw new Error('Could not deliver feedback. Please try again later.');
   }
-  return { success: true, message: 'Feedback sent (direct delivery)' };
+  return { success: true, message: 'Feedback sent' };
 }
