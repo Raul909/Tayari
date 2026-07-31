@@ -69,22 +69,38 @@ def _get_basin(basin_id: str) -> BasinConfig:
 
 # ─── Basin Endpoints ──────────────────────────────────────────────────────────
 
+# Last successful summary per basin. A transient upstream failure (common on a
+# Render cold start, or when GloFAS lags a day for a specific gauge) must never
+# blank out a basin the way an all-default fallback would — e.g. the White Nile
+# (Bor) gauge periodically had no data in the most-recent 3 days, so the list
+# showed it with no risk/discharge/probability (a dash in the apps). We serve
+# the last good values for that basin instead, and only fall back to a bare
+# summary the very first time we've never seen data for it.
+_last_good_summary: dict[str, BasinSummary] = {}
+
+
 async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
     """Build a summary for a single basin. Fetches its two data feeds in parallel."""
     try:
         # Discharge + rainfall are independent — fetch them concurrently.
+        # Use the same wide past-days window the full-forecast endpoint uses
+        # (past_days=30 / 14): GloFAS discharge for some gauges (notably the
+        # White Nile at Bor) is not published for the most recent day or two,
+        # so a 3-day window came back empty and the risk computation failed,
+        # dropping the basin to the all-null fallback below. A 30-day window
+        # always contains a usable recent point.
         discharge, rainfall = await asyncio.gather(
             fetch_river_discharge(
                 basin.gauge_point.latitude,
                 basin.gauge_point.longitude,
                 forecast_days=3,
-                past_days=3,
+                past_days=30,
             ),
             fetch_upstream_rainfall(
                 basin.upstream_point.latitude,
                 basin.upstream_point.longitude,
                 forecast_days=3,
-                past_days=3,
+                past_days=14,
             ),
         )
 
@@ -97,7 +113,7 @@ async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
                 current_discharge = d.discharge_mean
                 break
 
-        return BasinSummary(
+        summary = BasinSummary(
             id=basin.id,
             name=basin.name,
             river=basin.river,
@@ -110,8 +126,18 @@ async def _summarize_basin(basin: BasinConfig) -> BasinSummary:
             last_updated=datetime.utcnow(),
             languages=basin.languages,
         )
+        # Only remember it as "good" once we actually resolved a discharge —
+        # otherwise a partial success would poison the fallback with a null.
+        if current_discharge is not None:
+            _last_good_summary[basin.id] = summary
+        return summary
     except Exception as e:
         logger.error(f"Error fetching data for basin {basin.id}: {e}")
+        # Prefer the last values we successfully computed for this basin over a
+        # blank summary that would render as "no data" (a dash) in the apps.
+        cached = _last_good_summary.get(basin.id)
+        if cached is not None:
+            return cached
         return BasinSummary(
             id=basin.id,
             name=basin.name,
