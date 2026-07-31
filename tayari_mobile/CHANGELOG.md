@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.8.0] - 2026-07-31
+### Added
+- **Optional sign-in.** You can now create a Tayari account or sign in from the
+  home screen (the account icon, top-right) — the same accounts as the web
+  dashboard. Sign in, create an account, and reset a forgotten password are all
+  supported, and the dialog closes with a small × in the corner. It stays
+  entirely **optional**: the app opens straight to the map and works fully
+  signed-out. Sign-in talks to the account service directly, so it keeps working
+  even when the reports/forecast server is still waking up.
+
+### Fixed
+- **White Nile (Bor) no longer shows a blank "—" on the home list.** When the
+  upstream river-data feed briefly had no reading for a basin (most often the
+  White Nile at Bor), the home list dropped it to no risk / no probability. The
+  server now uses a wider data window and remembers each basin's last good
+  reading, so a momentary gap no longer blanks out a basin.
+- **Clearer message when reports can't load.** The community reports screen used
+  to always say *"check your connection"* — even when your connection was fine
+  and the server was the one waking up. It now tells them apart: a server that's
+  starting up says so, and *Retry* works once it's back.
+
 ## [1.7.0] - 2026-07-30
 ### Added
 - **Ask about the advisory (chat).** The basin screen now has the same

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/basin_provider.dart';
@@ -35,11 +36,36 @@ class _CommunityReportsScreenState
         _reports = data.cast<Map<String, dynamic>>().reversed.toList();
         _error = null;
       });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = _messageFor(e));
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _error = 'Could not load reports. Check your connection and retry.';
       });
+    }
+  }
+
+  /// Turn a network failure into a message that actually matches the cause, so
+  /// users aren't told to "check your connection" when the server is the one
+  /// having a moment (e.g. the backend returns 503 while its database is
+  /// waking up or unreachable).
+  String _messageFor(DioException e) {
+    final status = e.response?.statusCode;
+    if (status != null && status >= 500) {
+      return 'The reports service is temporarily unavailable — it may be '
+          'starting up. Please try again in a moment.';
+    }
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return 'The server took too long to respond. Please try again in a moment.';
+      case DioExceptionType.connectionError:
+        return 'Could not load reports. Check your connection and retry.';
+      default:
+        return 'Could not load reports. Please try again shortly.';
     }
   }
 
