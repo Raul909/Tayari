@@ -226,3 +226,86 @@ async def health_db():
             {"status": "error", "database": "unreachable", "detail": str(e)[:150]},
             status_code=503,
         )
+
+
+@app.get("/health/feeds")
+async def health_feeds():
+    """
+    Reachability of every upstream the hazard engine depends on.
+
+    Added after a production incident worth recording: the Smithsonian volcano
+    feed was unreachable from Render for hours while the app reported nothing
+    wrong, because a failed fetch and an empty week looked identical downstream.
+    A warning system that cannot say which of its own senses have gone dark is
+    one bad afternoon away from confidently reporting calm.
+
+    Each feed is probed independently with a short timeout. Slow, so it is not
+    the liveness probe — /health stays cheap and DB-free for Render.
+    """
+    import asyncio
+    import time
+
+    import httpx
+
+    from app.hazards import feeds as hz
+
+    probes = {
+        "weather (Open-Meteo forecast)": (
+            hz.FORECAST_API,
+            {"latitude": 0, "longitude": 0, "daily": "temperature_2m_max", "forecast_days": 1},
+        ),
+        "archive (Open-Meteo reanalysis)": (
+            hz.ARCHIVE_API,
+            {
+                "latitude": 0,
+                "longitude": 0,
+                "start_date": "2025-01-01",
+                "end_date": "2025-01-02",
+                "daily": "precipitation_sum",
+            },
+        ),
+        "elevation (Copernicus DEM)": (
+            settings.elevation_api_base,
+            {"latitude": 0, "longitude": 0},
+        ),
+        "discharge (GloFAS)": (
+            settings.flood_api_base,
+            {"latitude": 25.6, "longitude": 85.1, "daily": "river_discharge", "forecast_days": 1},
+        ),
+        "geocoding (Open-Meteo)": (hz.GEOCODE_API, {"name": "Nairobi", "count": 1, "format": "json"}),
+        "earthquakes (USGS)": (
+            hz.USGS_COUNT,
+            {"format": "geojson", "minmagnitude": 6, "starttime": "2026-01-01"},
+        ),
+        "volcanoes (Smithsonian GVP)": (hz.GVP_WEEKLY_RSS, {}),
+    }
+
+    async def probe(name: str, url: str, params: dict) -> dict:
+        started = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+                resp = await client.get(url, params=params or None)
+            return {
+                "feed": name,
+                "ok": resp.status_code == 200,
+                "status": resp.status_code,
+                "ms": round((time.monotonic() - started) * 1000),
+                "bytes": len(resp.content),
+                "content_type": resp.headers.get("content-type", "")[:40],
+            }
+        except Exception as e:  # noqa: BLE001
+            return {
+                "feed": name,
+                "ok": False,
+                "ms": round((time.monotonic() - started) * 1000),
+                "error": f"{type(e).__name__}: {str(e)[:160]}",
+            }
+
+    results = await asyncio.gather(
+        *(probe(name, url, params) for name, (url, params) in probes.items())
+    )
+    healthy = all(r["ok"] for r in results)
+    return JSONResponse(
+        {"status": "ok" if healthy else "degraded", "feeds": results},
+        status_code=200 if healthy else 503,
+    )
