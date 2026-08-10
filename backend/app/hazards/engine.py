@@ -177,34 +177,37 @@ async def global_events(min_magnitude: float = 4.5, days: int = 7) -> dict:
     from app.hazards import volcano_catalog
 
     quakes = await feeds.fetch_global_quakes(min_magnitude=min_magnitude, days=days)
-    activity = await feeds.fetch_volcano_activity()
+    eruptions = await feeds.fetch_eruptions()
 
-    eruptions = []
-    for report in activity or []:
-        matched = volcano_catalog.match_volcano(report.latitude, report.longitude)
-        eruptions.append(
+    active = []
+    for eruption in eruptions or []:
+        if not eruption.continuing:
+            continue
+        volcano = volcano_catalog.by_number(eruption.volcano_number)
+        active.append(
             {
-                "id": f"gvp-{matched.number}" if matched else f"gvp-{report.name}",
+                "id": f"gvp-{eruption.volcano_number}",
                 "hazard": HazardType.VOLCANO.value,
-                "title": report.headline,
-                "name": matched.name if matched else report.name,
-                "country": matched.country if matched else None,
-                "latitude": report.latitude,
-                "longitude": report.longitude,
-                "status": report.status,
-                "url": matched.url if matched else report.url,
+                "title": f"{eruption.volcano_name} — {eruption.label}",
+                "name": eruption.volcano_name,
+                "country": volcano.country if volcano else None,
+                "latitude": eruption.latitude,
+                "longitude": eruption.longitude,
+                "status": eruption.label,
+                "vei": eruption.vei,
+                "url": volcano.url if volcano else "https://volcano.si.edu/",
             }
         )
 
     return {
         "earthquakes": [q.model_dump(mode="json") for q in quakes],
-        "volcanoes": eruptions,
+        "volcanoes": active,
         # Distinguishes "nothing is erupting" from "we could not find out",
         # so a client never renders an unread feed as an empty world.
-        "unavailable": [] if activity is not None else ["volcanoes"],
+        "unavailable": [] if eruptions is not None else ["volcanoes"],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "sources": [
             "USGS Earthquake Hazards Program",
-            "Smithsonian / USGS Weekly Volcanic Activity Report",
+            "Smithsonian Global Volcanism Program — eruption catalog",
         ],
     }

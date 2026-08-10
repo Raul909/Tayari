@@ -27,13 +27,9 @@ export default {
 
     // Upstream feeds proxied on the backend's behalf.
     //
-    // Render's egress IP cannot reliably reach these hosts — Open-Meteo
-    // rate-limits it and volcano.si.edu times out — while the same requests
-    // succeed from Cloudflare's edge. Everything the hazard engine needs that
-    // is not USGS (which Render can reach directly) goes through here.
-    //
-    // Content-Type is passed through rather than forced to JSON: the
-    // Smithsonian weekly report is latin-1 XML and was being mislabelled.
+    // Open-Meteo rate-limits Render's egress IP, while the same requests
+    // succeed from Cloudflare's edge. USGS and the Smithsonian GeoServer are
+    // reachable from Render directly and are not proxied.
     const PROXY_ROUTES = {
       "/flood": "https://flood-api.open-meteo.com/v1/flood",
       "/weather": "https://api.open-meteo.com/v1/forecast",
@@ -41,30 +37,13 @@ export default {
       "/elevation": "https://api.open-meteo.com/v1/elevation",
       "/geocode": "https://geocoding-api.open-meteo.com/v1/search",
       "/revgeo": "https://api.bigdatacloud.net/data/reverse-geocode-client",
-      "/gvp": "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
     };
 
     for (const [prefix, upstream] of Object.entries(PROXY_ROUTES)) {
       if (url.pathname.startsWith(prefix)) {
         try {
-          // volcano.si.edu sits behind bot protection that answers a bare
-          // datacenter request with a 46 KB HTML interstitial and an HTTP 200.
-          // A plausible browser header set is what gets the actual file.
-          const requestHeaders =
-            prefix === "/gvp"
-              ? {
-                  "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                  Accept:
-                    "application/rss+xml,application/xml;q=0.9,text/xml;q=0.8,*/*;q=0.7",
-                  "Accept-Language": "en-US,en;q=0.9",
-                  Referer: "https://volcano.si.edu/",
-                }
-              : { "User-Agent": "Tayari CF Worker" };
-
           const resp = await fetch(upstream + url.search, {
-            headers: requestHeaders,
+            headers: { "User-Agent": "Tayari CF Worker" },
             // The reanalysis archive can take a while for a five-year window.
             signal: AbortSignal.timeout(50000),
           });

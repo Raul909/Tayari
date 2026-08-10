@@ -42,8 +42,7 @@ class HazardContext:
     seismic: Optional[feeds.SeismicHistory] = None
     recent_quakes: Optional[list[HazardEvent]] = None
     volcanoes: list[volcano_catalog.NearbyVolcano] = field(default_factory=list)
-    volcano_activity: list[feeds.VolcanoActivity] = field(default_factory=list)
-    recent_eruptions: list[feeds.RecentEruption] = field(default_factory=list)
+    eruptions: list[feeds.Eruption] = field(default_factory=list)
 
     failed_feeds: list[str] = field(default_factory=list)
 
@@ -91,7 +90,7 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
     """
     Gather every feed for a location in parallel.
 
-    Eight upstream calls, one round-trip's worth of latency. `return_exceptions`
+    Seven upstream calls, one round-trip's worth of latency. `return_exceptions`
     keeps a single raising task from cancelling its siblings — the whole point of
     doing this concurrently is lost if one slow API can void the other five.
     """
@@ -105,13 +104,12 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
         feeds.fetch_discharge_climatology(latitude, longitude),
         feeds.fetch_seismic_history(latitude, longitude),
         feeds.fetch_recent_quakes(latitude, longitude),
-        feeds.fetch_volcano_activity(),
-        feeds.fetch_recent_eruptions(),
+        feeds.fetch_eruptions(),
         return_exceptions=True,
     )
     (
         terrain, weather, climate, discharge, discharge_clim,
-        seismic, quakes, activity, eruptions,
+        seismic, quakes, eruptions,
     ) = results
 
     def _unwrap(value, label: str, default=None):
@@ -131,8 +129,7 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
     ctx.discharge_climatology = _unwrap(discharge_clim, "discharge_climatology")
     ctx.seismic = _unwrap(seismic, "seismic")
     ctx.recent_quakes = _unwrap(quakes, "earthquakes")
-    ctx.volcano_activity = _unwrap(activity, "volcano_activity", []) or []
-    ctx.recent_eruptions = _unwrap(eruptions, "eruption_catalog", []) or []
+    ctx.eruptions = _unwrap(eruptions, "eruptions", []) or []
 
     # Local only — the catalog is in memory, so this cannot fail on the network.
     ctx.volcanoes = volcano_catalog.nearby_volcanoes(latitude, longitude, radius_km=150.0)

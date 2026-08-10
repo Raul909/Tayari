@@ -108,6 +108,21 @@ def nearby_volcanoes(
     return found[:limit]
 
 
+def by_number(volcano_number: int) -> Optional[Volcano]:
+    """Look up a volcano by its Smithsonian number — the exact join key."""
+    return _by_number().get(volcano_number)
+
+
+_number_index: Optional[dict[int, Volcano]] = None
+
+
+def _by_number() -> dict[int, Volcano]:
+    global _number_index
+    if _number_index is None:
+        _number_index = {v.number: v for v in _load()}
+    return _number_index
+
+
 def match_volcano(latitude: float, longitude: float, tolerance_km: float = 25.0) -> Optional[Volcano]:
     """
     Find the catalog entry for a coordinate reported by the weekly activity feed.

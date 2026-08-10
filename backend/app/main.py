@@ -277,16 +277,15 @@ async def health_feeds():
             hz.USGS_COUNT,
             {"format": "geojson", "minmagnitude": 6, "starttime": "2026-01-01"},
         ),
-        "volcanoes (Smithsonian GVP)": (hz.GVP_WEEKLY_SOURCES[0], {}),
-        "volcanoes direct (Smithsonian GVP)": (hz.GVP_WEEKLY_SOURCES[1], {}),
-        "volcano catalog (GVP GeoServer)": (
-            "https://webservices.volcano.si.edu/geoserver/GVP-VOTW/ows",
+        "volcanoes (Smithsonian GVP)": (
+            hz.GVP_WFS,
             {
                 "service": "WFS",
                 "version": "2.0.0",
                 "request": "GetFeature",
-                "typeName": "GVP-VOTW:Smithsonian_VOTW_Holocene_Eruptions",
+                "typeName": hz.GVP_ERUPTIONS_LAYER,
                 "outputFormat": "application/json",
+                "cql_filter": "ContinuingEruption = true",
                 "count": 1,
             },
         ),

@@ -15,7 +15,6 @@ day; an earthquake swarm does, so recent events are cached for three minutes.
 import asyncio
 import logging
 import math
-import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -38,20 +37,15 @@ logger = logging.getLogger(__name__)
 FORECAST_API = settings.weather_api_base
 ARCHIVE_API = settings.archive_api_base
 GEOCODE_API = settings.geocode_api_base
-# Two paths to the same file, tried in order. volcano.si.edu answers a
-# datacenter IP with a 46 KB HTML interstitial rather than the report, and it
-# does so intermittently and differently for Render's egress and Cloudflare's —
-# so whichever one is being challenged right now, the other usually is not.
-GVP_WEEKLY_SOURCES = (
-    settings.volcano_activity_feed,
-    "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
-)
-
-# The Smithsonian's GeoServer, which is a different machine from the CMS above
-# and — verified from production — is not behind the same bot protection. Its
-# eruption records lag the weekly report by a few months, so it cannot say what
-# is erupting today, but it can say what has erupted recently, reliably.
+# The Smithsonian's GeoServer. Deliberately NOT volcano.si.edu, whose weekly
+# activity RSS this code used to scrape: that host answers every datacenter IP
+# with a 46 KB HTML bot interstitial under an HTTP 200 — Render's egress and
+# Cloudflare's alike, browser headers included — so in production it was never
+# readable at all. The GeoServer answers both, and its `E3WebApp_Eruptions1960`
+# layer carries a `ContinuingEruption` flag, which is the same question the
+# weekly report answers and in a form that needs no scraping.
 GVP_WFS = "https://webservices.volcano.si.edu/geoserver/GVP-VOTW/ows"
+GVP_ERUPTIONS_LAYER = "GVP-VOTW:E3WebApp_Eruptions1960"
 ERUPTION_LOOKBACK_YEARS = 3
 
 USGS_COUNT = "https://earthquake.usgs.gov/fdsnws/event/1/count"
@@ -76,8 +70,7 @@ _climate_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=256)
 _discharge_climatology_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=256)
 _seismic_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=256)
 _quake_cache = TTLCache(ttl_seconds=180)
-_volcano_activity_cache = TTLCache(ttl_seconds=3 * 3600, max_entries=4)
-_eruption_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=4)
+_eruption_cache = TTLCache(ttl_seconds=6 * 3600, max_entries=4)
 _geocode_cache = TTLCache(ttl_seconds=24 * 3600)
 
 
@@ -218,19 +211,6 @@ class SeismicHistory:
     def annual_rate_m45(self) -> float:
         span = max(1, date.today().year - self.since_year)
         return self.count_m45 / span
-
-
-@dataclass
-class VolcanoActivity:
-    """One volcano currently featured in the Smithsonian/USGS weekly report."""
-
-    name: str
-    latitude: float
-    longitude: float
-    headline: str
-    status: str
-    summary: str
-    url: str
 
 
 # ─── HTTP ─────────────────────────────────────────────────────────────────────
@@ -722,164 +702,62 @@ async def fetch_global_quakes(min_magnitude: float = 4.5, days: int = 7) -> list
 
 # ─── Volcanoes ────────────────────────────────────────────────────────────────
 
-_ITEM_RE = re.compile(r"<item>(.*?)</item>", re.S)
-_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.S)
-_POINT_RE = re.compile(r"<georss:point>\s*([-\d.]+)\s+([-\d.]+)\s*</georss:point>", re.S)
-_DESC_RE = re.compile(r"<description>(.*?)</description>", re.S)
-_TAG_RE = re.compile(r"<[^>]+>")
-
-
-async def fetch_volcano_activity() -> Optional[list[VolcanoActivity]]:
-    """
-    Volcanoes in the current Smithsonian/USGS Weekly Volcanic Activity Report.
-
-    Global and small (about two dozen entries), so it is fetched once and shared
-    by every request rather than per-location. Matching to the catalog is done
-    on the report's own coordinates, not on its name — report titles carry
-    inconsistent diacritics and local spellings, and a name mismatch on a
-    volcano hazard is not an acceptable failure mode.
-
-    Returns `None` when the feed could not be read, and an empty list only when
-    the report genuinely lists nothing. The distinction is not pedantry: an
-    earlier version returned `[]` for both, so one failed fetch was
-    indistinguishable from "no volcano on Earth is erupting this week" — and,
-    cached for three hours, it told Yogyakarta that Merapi was quiet while
-    Merapi was erupting 30 km away. A failure must never be cached as an answer.
-    """
-    cached = _volcano_activity_cache.get("weekly")
-    if cached is not None:
-        return cached
-
-    client = await get_client()
-    xml = None
-    for source in GVP_WEEKLY_SOURCES:
-        try:
-            resp = await client.get(
-                source,
-                timeout=40.0,
-                headers={"Accept": "application/rss+xml, application/xml, text/xml"},
-            )
-            resp.raise_for_status()
-            body = resp.content.decode("latin-1", errors="replace")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"GVP weekly feed unreachable via {source}: {e}")
-            continue
-
-        # A 200 carrying HTML is the bot interstitial, not the report. An empty
-        # week and a wrong body are not the same fact, and only one of them may
-        # be cached as an answer.
-        if "<rss" not in body and "<item>" not in body:
-            logger.warning(
-                f"GVP weekly feed via {source} returned {len(body)} bytes of non-RSS "
-                f"content (likely a bot interstitial); trying the next source"
-            )
-            continue
-
-        xml = body
-        break
-
-    if xml is None:
-        logger.error("GVP weekly activity feed unavailable from every source")
-        return None
-
-    activity: list[VolcanoActivity] = []
-    for raw in _ITEM_RE.findall(xml):
-        title_match = _TITLE_RE.search(raw)
-        point_match = _POINT_RE.search(raw)
-        if not title_match or not point_match:
-            continue
-        title = _unescape(title_match.group(1)).strip()
-
-        # "Etna (Italy) - Report for 30 July-5 August 2026 - New Eruptive Activity"
-        name = title.split("(")[0].strip()
-        status = title.rsplit(" - ", 1)[-1].strip() if " - " in title else "Activity reported"
-
-        desc_match = _DESC_RE.search(raw)
-        summary = ""
-        if desc_match:
-            summary = _TAG_RE.sub(" ", _unescape(desc_match.group(1)))
-            summary = re.sub(r"\s+", " ", summary).strip()
-
-        activity.append(
-            VolcanoActivity(
-                name=name,
-                latitude=float(point_match.group(1)),
-                longitude=float(point_match.group(2)),
-                headline=title,
-                status=status,
-                summary=summary[:600],
-                url="https://volcano.si.edu/reports_weekly.cfm",
-            )
-        )
-
-    _volcano_activity_cache.set("weekly", activity)
-    logger.info(f"GVP weekly report: {len(activity)} volcanoes with current activity")
-    return activity
-
-
-def _unescape(text: str) -> str:
-    return (
-        text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", '"')
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
-    )
-
-
 @dataclass
-class RecentEruption:
-    """A dated eruption from the Smithsonian eruption catalog."""
+class Eruption:
+    """
+    One eruption from the Smithsonian's post-1960 catalog.
+
+    `continuing` is the Global Volcanism Program's own determination that the
+    eruption has not ended — the authoritative answer to "is this volcano
+    erupting right now", and the reason this feed replaced the scraped weekly
+    report rather than merely backing it up.
+    """
 
     volcano_number: int
     volcano_name: str
     latitude: float
     longitude: float
-    activity_type: str
     vei: Optional[int]
     start: Optional[date]
-    end: Optional[date]
-
-    @property
-    def last_activity(self) -> Optional[date]:
-        """
-        When this volcano was last observed erupting.
-
-        The end date, not the start. Merapi's current eruption began on
-        31 December 2020 and the catalog carries its activity forward to the
-        present; keying on the start date filed it under 2020 and excluded it
-        from a recent-activity window entirely, which is how Yogyakarta came to
-        be told about a volcano 85 km away instead of the one 30 km away that
-        has been erupting for five years.
-        """
-        return self.end or self.start
+    last_observed: Optional[date]
+    continuing: bool
 
     @property
     def label(self) -> str:
-        when = self.last_activity
+        if self.continuing:
+            if self.start:
+                return f"erupting since {self.start.strftime('%B %Y')}"
+            return "currently erupting"
+        when = self.last_observed or self.start
         if when is None:
             return "recent eruption"
         return f"last active {when.strftime('%B %Y')}"
 
+    @property
+    def reference_date(self) -> Optional[date]:
+        """The date recency should be judged from: last observed activity."""
+        return self.last_observed or self.start
 
-async def fetch_recent_eruptions() -> Optional[list[RecentEruption]]:
+
+async def fetch_eruptions() -> Optional[list[Eruption]]:
     """
-    Every eruption the Smithsonian has recorded in the last few years.
+    Eruptions that are either still going or ended recently.
 
-    Fetched once globally and cached for a day — it is a few hundred records
-    and changes at the pace of a curated scientific catalog. Exists because the
-    weekly activity report, which is the genuinely live signal, is unreachable
-    from any datacenter IP: volcano.si.edu answers Render and Cloudflare alike
-    with a bot interstitial. This host answers both.
+    One request answers both questions the volcano card asks — what is erupting
+    now, and what has erupted lately — and it is matched to the catalog by
+    volcano number rather than by coordinate or name, so nothing can be
+    mismatched.
 
-    It lags by a few months, so it is presented as recent activity and never as
-    "erupting right now" — a distinction the volcano assessor preserves.
+    Fetched once globally (a few hundred records worldwide) and cached for six
+    hours. Returns None on failure and never caches one: a failed fetch that
+    looked like "no volcano is erupting" is exactly how this system once told
+    Yogyakarta that Merapi was quiet while Merapi was erupting 30 km away.
     """
-    cached = _eruption_cache.get("recent")
+    cached = _eruption_cache.get("current")
     if cached is not None:
         return cached
 
-    cutoff_year = date.today().year - ERUPTION_LOOKBACK_YEARS
+    cutoff = date.today().year - ERUPTION_LOOKBACK_YEARS
     client = await get_client()
     try:
         resp = await client.get(
@@ -888,21 +766,24 @@ async def fetch_recent_eruptions() -> Optional[list[RecentEruption]]:
                 "service": "WFS",
                 "version": "2.0.0",
                 "request": "GetFeature",
-                "typeName": "GVP-VOTW:Smithsonian_VOTW_Holocene_Eruptions",
+                "typeName": GVP_ERUPTIONS_LAYER,
                 "outputFormat": "application/json",
-                # Keyed on when activity was last observed, so multi-year
-                # eruptions that began before the window are not missed.
+                # Keyed on when activity was last observed, not when the eruption
+                # began: Merapi's current eruption started on 31 December 2020
+                # and continues, so a start-date filter files it under 2020 and
+                # drops it from any recent-activity window.
                 "cql_filter": (
-                    f"EndDateYear >= {cutoff_year} OR StartDateYear >= {cutoff_year}"
+                    f"ContinuingEruption = true OR EndDateYear >= {cutoff} "
+                    f"OR StartDateYear >= {cutoff}"
                 ),
-                "count": 600,
+                "count": 800,
             },
             timeout=40.0,
         )
         resp.raise_for_status()
         features = resp.json().get("features") or []
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"GVP eruption catalog failed: {e}")
+        logger.warning(f"GVP eruption feed failed: {e}")
         return None
 
     def _date(props: dict, prefix: str) -> Optional[date]:
@@ -910,33 +791,63 @@ async def fetch_recent_eruptions() -> Optional[list[RecentEruption]]:
         if not year:
             return None
         try:
-            return date(int(year), int(props.get(f"{prefix}Month") or 1) or 1,
-                        int(props.get(f"{prefix}Day") or 1) or 1)
+            return date(
+                int(year),
+                int(props.get(f"{prefix}Month") or 1) or 1,
+                int(props.get(f"{prefix}Day") or 1) or 1,
+            )
         except (ValueError, TypeError):
             return None
 
-    eruptions: list[RecentEruption] = []
+    def _flag(value) -> bool:
+        """
+        Parse GeoServer's booleans, which arrive as the *strings* 'True' and
+        'False' rather than as JSON booleans.
+
+        `bool("False")` is `True`, so the obvious cast marked all 135 records as
+        ongoing eruptions when only 38 were — every location near a volcano with
+        any activity in the last three years would have been told it was
+        erupting right now. Worth the explicit parse.
+        """
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"true", "1", "yes", "t"}
+
+    eruptions: list[Eruption] = []
     for feature in features:
         props = feature.get("properties") or {}
-        coords = (feature.get("geometry") or {}).get("coordinates") or []
-        if len(coords) < 2 or not props.get("Volcano_Number"):
+        number = props.get("VolcanoNumber")
+        if not number:
             continue
+        coords = (feature.get("geometry") or {}).get("coordinates") or []
+        latitude = props.get("LatitudeDecimal")
+        longitude = props.get("LongitudeDecimal")
+        if latitude is None or longitude is None:
+            if len(coords) < 2:
+                continue
+            latitude, longitude = coords[1], coords[0]
         eruptions.append(
-            RecentEruption(
-                volcano_number=int(props["Volcano_Number"]),
-                volcano_name=props.get("Volcano_Name") or "Unknown volcano",
-                latitude=coords[1],
-                longitude=coords[0],
-                activity_type=props.get("Activity_Type") or "Eruption",
+            Eruption(
+                volcano_number=int(number),
+                volcano_name=props.get("VolcanoName") or "Unknown volcano",
+                latitude=float(latitude),
+                longitude=float(longitude),
                 vei=props.get("ExplosivityIndexMax"),
                 start=_date(props, "StartDate"),
-                end=_date(props, "EndDate"),
+                last_observed=_date(props, "EndDate"),
+                continuing=_flag(props.get("ContinuingEruption")),
             )
         )
 
-    eruptions.sort(key=lambda e: (e.last_activity or date.min), reverse=True)
-    _eruption_cache.set("recent", eruptions)
-    logger.info(f"GVP eruption catalog: {len(eruptions)} eruptions since {cutoff_year}")
+    # Continuing eruptions first, then most recently observed.
+    eruptions.sort(
+        key=lambda e: (e.continuing, e.reference_date or date.min), reverse=True
+    )
+    _eruption_cache.set("current", eruptions)
+    logger.info(
+        f"GVP eruptions: {len(eruptions)} records "
+        f"({sum(1 for e in eruptions if e.continuing)} continuing)"
+    )
     return eruptions
 
 

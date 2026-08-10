@@ -113,7 +113,7 @@ HAZARD_META: dict[HazardType, HazardMeta] = {
         ),
         data_sources=[
             "Smithsonian Global Volcanism Program — Volcanoes of the World",
-            "Smithsonian / USGS Weekly Volcanic Activity Report",
+            "Smithsonian Global Volcanism Program — eruption catalog (ongoing eruptions)",
         ],
         forecastable=True,
     ),

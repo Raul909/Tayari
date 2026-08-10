@@ -49,12 +49,11 @@ class Settings(BaseSettings):
 
     # External APIs.
     #
-    # Everything except USGS is routed through the Cloudflare Worker proxy. This
-    # is not a preference: Render's egress IP gets rate-limited by Open-Meteo and
-    # times out against volcano.si.edu, so a production deployment calling them
-    # directly loses six of its nine hazards while the local dev box — on a
-    # domestic IP — shows all nine working perfectly. USGS is reachable from
-    # Render directly and is called directly.
+    # Open-Meteo is routed through the Cloudflare Worker proxy. This is not a
+    # preference: Render's egress IP gets rate-limited, so a production deployment
+    # calling it directly loses five of its nine hazards while the local dev box —
+    # on a domestic IP — shows all nine working perfectly. USGS and the Smithsonian
+    # GeoServer are reachable from Render and are called directly.
     #
     # Point these at the upstream hosts to bypass the proxy in local development.
     worker_proxy_base: str = "https://tayari-pinger.indialayers-dev.workers.dev"
@@ -76,10 +75,6 @@ class Settings(BaseSettings):
     @property
     def reverse_geocode_api_base(self) -> str:
         return f"{self.worker_proxy_base}/revgeo"
-
-    @property
-    def volcano_activity_feed(self) -> str:
-        return f"{self.worker_proxy_base}/gvp"
 
     # Frontend URL (for CORS)
     frontend_url: str = "http://localhost:3000"

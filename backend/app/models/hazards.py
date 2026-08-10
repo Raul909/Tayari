@@ -248,6 +248,39 @@ class HazardAdvisory(BaseModel):
     valid_until: datetime
 
 
+class HazardAlertRequest(BaseModel):
+    """Send an SMS advisory for one hazard at one location."""
+
+    hazard: HazardType
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    place_name: Optional[str] = Field(default=None, max_length=120)
+    role: UserRole = UserRole.GENERAL
+    language: Language = Language.ENGLISH
+    phone_numbers: list[str] = Field(
+        min_length=1, max_length=3, description="Phone numbers in international format"
+    )
+
+
+def alert_subject(hazard: HazardType, latitude: float, longitude: float) -> str:
+    """
+    The key a hazard alert is recorded and de-duplicated under.
+
+    Alert history predates the multi-hazard engine and its table has a single
+    `basin_id` column, which `create_all` cannot widen on a live database
+    without a migration this project has no tooling for. Rather than run one,
+    that column carries a subject key: a basin id for the eight calibrated
+    basins, and `hazard@lat,lon` for everywhere else. Both are stable
+    identifiers for "the thing this alert was about", which is what the column
+    was always really holding.
+
+    Coordinates are rounded to two decimals (~1 km) so two people alerting the
+    same village do not defeat the twelve-hour duplicate-send guard by standing
+    a few metres apart.
+    """
+    return f"{hazard.value}@{round(latitude, 2)},{round(longitude, 2)}"
+
+
 class PlaceResult(BaseModel):
     """A geocoding search hit."""
 
