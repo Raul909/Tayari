@@ -2440,3 +2440,179 @@ tr:hover td { background: var(--surface-sunken); }
 @media (max-width: 520px) {
   .hazard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ─── Mobile navigation ───────────────────────────────────────────────────── */
+/* Four destinations plus feedback and an account menu need about 430px across, */
+/* which a 360px phone does not have: flex squeezed every item and the labels    */
+/* clipped mid-word. Navigation moves to a bottom tab bar below 768px.           */
+
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Nothing in the bar may shrink into an ellipsis or a clipped glyph. */
+.nav-link,
+.navbar-title,
+.navbar-subtitle {
+  white-space: nowrap;
+}
+
+.nav-link {
+  flex-shrink: 0;
+}
+
+.feedback-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* The bottom tab bar: hidden by default, shown on phones. */
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* The top bar keeps the brand and the account controls only. */
+  .navbar-links {
+    display: none;
+  }
+
+  .navbar-title {
+    font-size: 19px;
+  }
+
+  .tabbar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: var(--surface);
+    border-top: 1px solid var(--border-color);
+    /* Clear the iOS home indicator without leaving a gap on Android. */
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -1px 3px rgba(35, 33, 28, 0.06);
+  }
+
+  .tabbar-item {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    /* 52px keeps the tap target above the 44px accessibility minimum. */
+    min-height: 52px;
+    padding: 7px 4px;
+    text-decoration: none;
+    color: var(--text-muted);
+    transition: color var(--transition), background var(--transition);
+  }
+
+  .tabbar-item.active {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .tabbar-icon {
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .tabbar-label {
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  /* Content must clear the fixed bar rather than hide behind it. */
+  .app-layout {
+    padding-bottom: calc(52px + env(safe-area-inset-bottom));
+  }
+
+  /* The map column already sizes itself against the viewport; take the tab bar
+     out of that budget too, or the bottom of the map sits under it. */
+  .map-container {
+    min-height: calc(48dvh - 52px);
+  }
+
+  .side-panel {
+    max-height: calc(62dvh - 52px);
+  }
+}
+
+/* Very narrow phones (≤360px): the brand subtitle and the feedback word are the
+   first things to go, before anything starts clipping. */
+@media (max-width: 400px) {
+  .navbar {
+    padding: 0 10px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  .navbar-title {
+    font-size: 18px;
+  }
+
+  .tabbar-label {
+    font-size: 10px;
+  }
+}
+
+/* ─── Small-screen polish ─────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .page-container {
+    padding: 22px 14px 36px;
+  }
+
+  .page-title {
+    font-size: 24px;
+  }
+
+  /* Full-width buttons stack instead of wrapping into ragged rows. */
+  .hazard-guide-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hazard-guide-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* The advisory role/language controls read better stacked than side by side. */
+  .advisory-controls {
+    gap: 12px;
+  }
+
+  /* Long unbroken strings — place names, source URLs, m³/s figures — must wrap
+     rather than push the page sideways. */
+  .hazard-card-headline,
+  .hazard-detail-headline,
+  .hazard-detail-summary,
+  .indicator-detail,
+  .source-list li,
+  .event-title {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* No `overflow-x: hidden` on html/body here, tempting as it is as a catch-all.
+   It makes body a scroll container, and that breaks `position: sticky` on the
+   navbar in Chrome and Safari — trading a hypothetical overflow for a header
+   that visibly stops sticking. Every width in this sheet is already max-width
+   based, and wide children (tables, the SMS preview) scroll inside their own
+   containers, so the overflow it would mask should not occur. */
