@@ -18,6 +18,8 @@ import asyncio
 import logging
 from typing import AsyncGenerator, Optional
 
+from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncSession, async_sessionmaker, create_async_engine,
 )
@@ -93,9 +95,33 @@ SessionLocal = async_sessionmaker(
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields a database session per request."""
+    """
+    Yield a database session, turning connectivity failures into a clear 503.
+
+    The failure surfaces as a raw `socket.gaierror` rather than a SQLAlchemy
+    error, because a paused Supabase project loses its DNS entirely and the
+    connect fails before SQLAlchemy has anything to wrap. It also surfaces when
+    the endpoint runs its query, not when the session is opened, since the
+    engine connects lazily — so it is caught here at the yield rather than
+    around the session construction.
+
+    Without this the endpoint returns a bare 500 that tells a user nothing and
+    points a developer at the wrong thing. 503 with the reason says what is
+    actually wrong and marks it transient.
+    """
     async with SessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except (OSError, SQLAlchemyError) as e:
+            logger.warning(f"Database unavailable: {type(e).__name__}: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The database is temporarily unavailable, so stored records "
+                    "(alert history, community reports) cannot be read right now. "
+                    "Hazard assessment and advisories are unaffected."
+                ),
+            ) from e
 
 
 async def get_optional_session() -> AsyncGenerator[Optional[AsyncSession], None]:
@@ -109,17 +135,25 @@ async def get_optional_session() -> AsyncGenerator[Optional[AsyncSession], None]
     busy" and no SMS went out, which is an early-warning system silenced by its
     own analytics store.
 
-    Callers must handle None and say so in their response rather than quietly
-    dropping the bookkeeping.
+    Unlike `get_session` this does NOT convert a failure into a 503 — that is
+    the whole point. It hands over a session and lets the caller guard its own
+    queries, so a database problem degrades the endpoint instead of ending it.
+
+    Callers must handle both a None session and a query that raises, and must
+    say so in their response rather than quietly dropping the bookkeeping.
     """
     try:
-        async with SessionLocal() as session:
-            yield session
-    except Exception as e:  # noqa: BLE001
-        logger.warning(
-            f"Database unavailable; continuing without it ({type(e).__name__}: {e})"
-        )
+        session = SessionLocal()
+    except Exception as e:  # noqa: BLE001 — construction should never fail, but
+        logger.warning(f"Could not open a database session ({type(e).__name__}: {e})")
         yield None
+        return
+
+    # Deliberately no try/except around the yield: swallowing an exception
+    # raised by the endpoint would suppress its error handling rather than
+    # degrade it, which is a different and worse behaviour.
+    async with session:
+        yield session
 
 
 async def init_db() -> None:
