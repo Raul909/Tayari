@@ -47,9 +47,39 @@ class Settings(BaseSettings):
     supabase_publishable_key: Optional[str] = None
     supabase_secret_key: Optional[str] = None
 
-    # External APIs (routed through Cloudflare Worker proxy to avoid Render rate limits)
+    # External APIs.
+    #
+    # Everything except USGS is routed through the Cloudflare Worker proxy. This
+    # is not a preference: Render's egress IP gets rate-limited by Open-Meteo and
+    # times out against volcano.si.edu, so a production deployment calling them
+    # directly loses six of its nine hazards while the local dev box — on a
+    # domestic IP — shows all nine working perfectly. USGS is reachable from
+    # Render directly and is called directly.
+    #
+    # Point these at the upstream hosts to bypass the proxy in local development.
+    worker_proxy_base: str = "https://tayari-pinger.indialayers-dev.workers.dev"
     flood_api_base: str = "https://tayari-pinger.indialayers-dev.workers.dev/flood"
     weather_api_base: str = "https://tayari-pinger.indialayers-dev.workers.dev/weather"
+
+    @property
+    def archive_api_base(self) -> str:
+        return f"{self.worker_proxy_base}/archive"
+
+    @property
+    def elevation_api_base(self) -> str:
+        return f"{self.worker_proxy_base}/elevation"
+
+    @property
+    def geocode_api_base(self) -> str:
+        return f"{self.worker_proxy_base}/geocode"
+
+    @property
+    def reverse_geocode_api_base(self) -> str:
+        return f"{self.worker_proxy_base}/revgeo"
+
+    @property
+    def volcano_activity_feed(self) -> str:
+        return f"{self.worker_proxy_base}/gvp"
 
     # Frontend URL (for CORS)
     frontend_url: str = "http://localhost:3000"

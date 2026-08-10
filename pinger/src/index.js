@@ -25,18 +25,49 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Proxy for Open-Meteo Flood API
-    if (url.pathname.startsWith("/flood")) {
-      const target = new URL("https://flood-api.open-meteo.com/v1/flood" + url.search);
-      const resp = await fetch(target, { headers: { "User-Agent": "Tayari CF Worker" } });
-      return new Response(resp.body, { status: resp.status, headers: { "Content-Type": "application/json" } });
-    }
+    // Upstream feeds proxied on the backend's behalf.
+    //
+    // Render's egress IP cannot reliably reach these hosts — Open-Meteo
+    // rate-limits it and volcano.si.edu times out — while the same requests
+    // succeed from Cloudflare's edge. Everything the hazard engine needs that
+    // is not USGS (which Render can reach directly) goes through here.
+    //
+    // Content-Type is passed through rather than forced to JSON: the
+    // Smithsonian weekly report is latin-1 XML and was being mislabelled.
+    const PROXY_ROUTES = {
+      "/flood": "https://flood-api.open-meteo.com/v1/flood",
+      "/weather": "https://api.open-meteo.com/v1/forecast",
+      "/archive": "https://archive-api.open-meteo.com/v1/archive",
+      "/elevation": "https://api.open-meteo.com/v1/elevation",
+      "/geocode": "https://geocoding-api.open-meteo.com/v1/search",
+      "/revgeo": "https://api.bigdatacloud.net/data/reverse-geocode-client",
+      "/gvp": "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
+    };
 
-    // Proxy for Open-Meteo Weather API
-    if (url.pathname.startsWith("/weather")) {
-      const target = new URL("https://api.open-meteo.com/v1/forecast" + url.search);
-      const resp = await fetch(target, { headers: { "User-Agent": "Tayari CF Worker" } });
-      return new Response(resp.body, { status: resp.status, headers: { "Content-Type": "application/json" } });
+    for (const [prefix, upstream] of Object.entries(PROXY_ROUTES)) {
+      if (url.pathname.startsWith(prefix)) {
+        try {
+          const resp = await fetch(upstream + url.search, {
+            headers: { "User-Agent": "Tayari CF Worker" },
+            // The reanalysis archive can take a while for a five-year window.
+            signal: AbortSignal.timeout(50000),
+          });
+          const headers = new Headers();
+          headers.set(
+            "Content-Type",
+            resp.headers.get("Content-Type") || "application/json"
+          );
+          // Cached at the edge so repeated lookups for the same place cost the
+          // upstream nothing. Short, because the forecast half moves hourly.
+          headers.set("Cache-Control", "public, max-age=600");
+          return new Response(resp.body, { status: resp.status, headers });
+        } catch (error) {
+          return new Response(
+            JSON.stringify({ error: `Upstream fetch failed: ${error.message || error}` }),
+            { status: 502, headers: { "Content-Type": "application/json" } }
+          );
+        }
+      }
     }
 
     // Manual ping — reports both the Render wake and the Supabase DB touch, so

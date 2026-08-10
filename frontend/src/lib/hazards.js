@@ -89,21 +89,57 @@ async function getJson(path, { signal } = {}) {
   return res.json();
 }
 
+/**
+ * Turn a coordinate into a place name.
+ *
+ * Runs in the browser, not on the server, because BigDataCloud's free endpoint
+ * is licensed for client-side use only and answers any server-side caller with
+ * HTTP 402. That distinction is invisible in local development — a laptop looks
+ * like a client — and only shows up in production, which is exactly where it
+ * did show up.
+ *
+ * Purely cosmetic: every hazard score comes from the coordinates, so a failure
+ * here costs a label and nothing else.
+ */
+export async function reverseGeocode(latitude, longitude) {
+  try {
+    const res = await fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const name = data.city || data.locality || data.principalSubdivision;
+    if (!name) return null;
+    return {
+      name,
+      country: data.countryName || null,
+      country_code: (data.countryCode || '').toLowerCase() || null,
+      admin1: data.principalSubdivision || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** The full multi-hazard profile for a coordinate. */
-export function fetchHazardProfile({ latitude, longitude, name }, options = {}) {
+export function fetchHazardProfile({ latitude, longitude, name, country, country_code }, options = {}) {
   const params = new URLSearchParams({ lat: latitude, lon: longitude });
   if (name) params.set('name', name);
+  if (country) params.set('country', country);
+  if (country_code) params.set('country_code', country_code);
   return getJson(`/api/hazards?${params}`, options);
 }
 
 /** An AI advisory for one hazard, in one language, for one kind of reader. */
 export function fetchHazardAdvisory(
   hazard,
-  { latitude, longitude, name },
+  { latitude, longitude, name, country, country_code },
   { role = 'general', language = 'en', signal } = {}
 ) {
   const params = new URLSearchParams({ lat: latitude, lon: longitude, role, language });
   if (name) params.set('name', name);
+  if (country) params.set('country', country);
+  if (country_code) params.set('country_code', country_code);
   return getJson(`/api/hazards/${hazard}/advisory?${params}`, { signal });
 }
 

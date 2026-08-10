@@ -21,13 +21,15 @@ from typing import Optional
 
 import httpx
 
+from app.config import settings
 from app.models.hazards import TerrainProfile
 
 logger = logging.getLogger(__name__)
 
 EARTH_RADIUS_KM = 6371.0088
 
-ELEVATION_API = "https://api.open-meteo.com/v1/elevation"
+# Proxied for the same reason as the other Open-Meteo feeds (see feeds.py).
+ELEVATION_API = settings.elevation_api_base
 
 # Rings sampled around the point, in km. The inner rings resolve steepness that
 # matters for landslides; the outer ones are there to find an ocean. 200 km is

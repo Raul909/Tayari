@@ -11,7 +11,6 @@ trustworthy answer for the places they cover, because those thresholds are
 calibrated against real floods; this is the broader, shallower layer around them.
 """
 
-import asyncio
 import logging
 from typing import Optional
 
@@ -66,10 +65,9 @@ async def assess(
     request: Request,
     lat: float = Query(..., description="Latitude, -90 to 90"),
     lon: float = Query(..., description="Longitude, -180 to 180"),
-    name: Optional[str] = Query(None, description="Place name, if the caller already has one"),
-    resolve_name: bool = Query(
-        True, description="Reverse-geocode the coordinates when no name is supplied"
-    ),
+    name: Optional[str] = Query(None, description="Place name, if the caller has one"),
+    country: Optional[str] = Query(None),
+    country_code: Optional[str] = Query(None, max_length=2),
 ):
     """
     Assess every hazard at a location.
@@ -78,29 +76,28 @@ async def assess(
     then cached at tiers matched to how fast each feed's truth moves — so a
     repeat visit to the same place is close to free, while an earthquake feed
     three minutes old is never served as current.
+
+    Turning a coordinate into a place name is the client's job: the free
+    reverse-geocoding services are browser-only by licence (BigDataCloud's
+    returns HTTP 402 to any server-side caller, which is exactly how this was
+    found — it worked in local development and failed in production). Pass
+    `name` if you have one; every score is computed from the coordinates
+    regardless.
     """
     _validate_coords(lat, lon)
 
-    place = LocationRef(latitude=lat, longitude=lon, name=name)
+    place = LocationRef(
+        latitude=lat, longitude=lon, name=name, country=country, country_code=country_code
+    )
 
-    # The name lookup is cosmetic and runs alongside the hazard work rather than
-    # in front of it: every score comes from the coordinates, so a geocoder
-    # outage should cost a label and nothing else.
-    context_task = build_context(lat, lon)
-    if name or not resolve_name:
-        ctx = await context_task
-    else:
-        ctx, resolved = await asyncio.gather(
-            context_task, feeds.reverse_geocode(lat, lon), return_exceptions=True
-        )
-        if isinstance(ctx, BaseException):
-            logger.exception(f"Context build failed at ({lat}, {lon}): {ctx}")
-            raise HTTPException(status_code=502, detail="Hazard data feeds are unavailable")
-        if not isinstance(resolved, BaseException) and resolved is not None:
-            place.name = resolved.name
-            place.country = resolved.country
-            place.country_code = resolved.country_code
-            place.admin1 = resolved.admin1
+    # Naming a coordinate is the client's job — see the docstring. Everything
+    # here is computed from the numbers, so an unnamed location is fully
+    # assessed; it just renders as coordinates.
+    try:
+        ctx = await build_context(lat, lon)
+    except Exception as e:  # noqa: BLE001
+        logger.exception(f"Context build failed at ({lat}, {lon}): {e}")
+        raise HTTPException(status_code=502, detail="Hazard data feeds are unavailable")
 
     return await assess_location(lat, lon, place=place, ctx=ctx)
 
@@ -113,6 +110,8 @@ async def hazard_advisory(
     lat: float = Query(...),
     lon: float = Query(...),
     name: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    country_code: Optional[str] = Query(None, max_length=2),
     role: UserRole = Query(UserRole.GENERAL),
     language: Language = Query(Language.ENGLISH),
 ):
@@ -126,19 +125,11 @@ async def hazard_advisory(
     """
     _validate_coords(lat, lon)
 
-    place = LocationRef(latitude=lat, longitude=lon, name=name)
-    if not name:
-        # The advisory names the place in its title and body, so an unnamed
-        # location produces "Earthquake — Moderate at your location", which
-        # reads as a system that does not know where you are. Cached, so this
-        # is nearly always free.
-        resolved = await feeds.reverse_geocode(lat, lon)
-        if resolved is not None:
-            place.name = resolved.name
-            place.country = resolved.country
-            place.country_code = resolved.country_code
-            place.admin1 = resolved.admin1
-
+    # The advisory names the place in its title and body, so the client should
+    # pass `name` here for the same reason it does on the profile endpoint.
+    place = LocationRef(
+        latitude=lat, longitude=lon, name=name, country=country, country_code=country_code
+    )
     profile = await assess_location(lat, lon, place=place)
     risk = next((r for r in profile.hazards if r.hazard == hazard), None)
     if risk is None:
@@ -192,15 +183,3 @@ async def search(
 ):
     """Find a place by name, so a location can be chosen without GPS."""
     return await feeds.search_places(q, count=count)
-
-
-@router.get("/places/reverse", response_model=Optional[PlaceResult])
-@limiter.limit("40/minute")
-async def reverse(
-    request: Request,
-    lat: float = Query(...),
-    lon: float = Query(...),
-):
-    """Name a coordinate. Returns null rather than erroring when unresolvable."""
-    _validate_coords(lat, lon)
-    return await feeds.reverse_geocode(lat, lon)

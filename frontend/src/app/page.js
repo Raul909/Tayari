@@ -15,6 +15,7 @@ import {
   hazardMeta,
   loadLocation,
   placeLabel,
+  reverseGeocode,
   saveLocation,
 } from '@/lib/hazards';
 import { getDeviceTier, loadMapLibrary, mapOptionsForTier, onIdle, TIERS } from '@/lib/perf';
@@ -62,13 +63,31 @@ export default function HazardDashboard() {
       setLoading(true);
       setError(null);
       try {
+        // Name the coordinate here rather than server-side: the free
+        // reverse-geocoder is licensed for browsers only. Run alongside the
+        // assessment rather than before it — it is a label, and it must never
+        // delay the hazard data or fail the request.
+        let named = target;
+        if (!target.name) {
+          const [data, place] = await Promise.all([
+            fetchHazardProfile(target),
+            reverseGeocode(target.latitude, target.longitude),
+          ]);
+          if (id !== profileId.current) return;
+          named = place ? { ...target, ...place } : target;
+          setProfile(data);
+          setSelected(null);
+          const resolved = { ...named, ...data.location, ...(place || {}) };
+          setLocation(resolved);
+          saveLocation(resolved);
+          return;
+        }
+
         const data = await fetchHazardProfile(target);
         if (id !== profileId.current) return;
         setProfile(data);
         setSelected(null);
-        // The API resolves the place name and country; keeping them means a
-        // reload shows "Kathmandu, Nepal" rather than a pair of numbers.
-        const resolved = { ...target, ...data.location };
+        const resolved = { ...target, ...data.location, name: target.name };
         setLocation(resolved);
         saveLocation(resolved);
       } catch (e) {

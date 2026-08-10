@@ -22,6 +22,7 @@ from typing import Optional
 
 import httpx
 
+from app.config import settings
 from app.hazards.cache import TTLCache, geo_key
 from app.hazards.geo import haversine_km
 from app.models.hazards import HazardEvent, HazardType, PlaceResult
@@ -30,14 +31,18 @@ logger = logging.getLogger(__name__)
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
-FORECAST_API = "https://api.open-meteo.com/v1/forecast"
-ARCHIVE_API = "https://archive-api.open-meteo.com/v1/archive"
-GEOCODE_API = "https://geocoding-api.open-meteo.com/v1/search"
-REVERSE_GEOCODE_API = "https://api.bigdatacloud.net/data/reverse-geocode-client"
+# Routed through the Cloudflare Worker proxy — see `config.Settings`. Render's
+# egress IP is rate-limited by Open-Meteo and times out against volcano.si.edu,
+# which silently cost six of the nine hazards in production while every one of
+# them worked locally. USGS is reachable from Render and is called directly.
+FORECAST_API = settings.weather_api_base
+ARCHIVE_API = settings.archive_api_base
+GEOCODE_API = settings.geocode_api_base
+GVP_WEEKLY_RSS = settings.volcano_activity_feed
+
 USGS_COUNT = "https://earthquake.usgs.gov/fdsnws/event/1/count"
 USGS_QUERY = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 USGS_EVENT_PAGE = "https://earthquake.usgs.gov/earthquakes/eventpage/"
-GVP_WEEKLY_RSS = "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml"
 
 DAILY_FORECAST_VARS = (
     "temperature_2m_max,temperature_2m_min,apparent_temperature_max,"
@@ -59,7 +64,6 @@ _seismic_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=256)
 _quake_cache = TTLCache(ttl_seconds=180)
 _volcano_activity_cache = TTLCache(ttl_seconds=3 * 3600, max_entries=4)
 _geocode_cache = TTLCache(ttl_seconds=24 * 3600)
-_reverse_cache = TTLCache(ttl_seconds=24 * 3600)
 
 
 # ─── Parsed feed structures ───────────────────────────────────────────────────
@@ -243,7 +247,7 @@ async def close_client() -> None:
 
 # ─── River discharge climatology ──────────────────────────────────────────────
 
-FLOOD_ARCHIVE_API = "https://flood-api.open-meteo.com/v1/flood"
+FLOOD_ARCHIVE_API = settings.flood_api_base
 
 
 async def fetch_discharge_climatology(
@@ -819,42 +823,3 @@ async def search_places(name: str, count: int = 8) -> list[PlaceResult]:
     ]
     _geocode_cache.set(key, places)
     return places
-
-
-async def reverse_geocode(latitude: float, longitude: float) -> Optional[PlaceResult]:
-    """
-    Name the coordinates a device just reported.
-
-    Purely cosmetic — it turns "0.31, 32.58" into "Kampala, Uganda" on the card.
-    Every hazard score is computed from the coordinates themselves, so a failure
-    here costs a label and nothing else.
-    """
-    key = geo_key(latitude, longitude)
-    cached = _reverse_cache.get(key)
-    if cached is not None:
-        return cached
-
-    client = await get_client()
-    try:
-        resp = await client.get(
-            REVERSE_GEOCODE_API,
-            params={"latitude": latitude, "longitude": longitude, "localityLanguage": "en"},
-            timeout=12.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:  # noqa: BLE001
-        logger.info(f"Reverse geocoding failed at ({latitude}, {longitude}): {e}")
-        return None
-
-    name = data.get("city") or data.get("locality") or data.get("principalSubdivision")
-    place = PlaceResult(
-        name=name or f"{latitude:.2f}, {longitude:.2f}",
-        latitude=latitude,
-        longitude=longitude,
-        country=data.get("countryName"),
-        country_code=(data.get("countryCode") or "").lower() or None,
-        admin1=data.get("principalSubdivision"),
-    )
-    _reverse_cache.set(key, place)
-    return place
