@@ -1,5 +1,5 @@
 """
-Tayari — AI Flood Early Warning & Early Action System
+Tayari — AI Multi-Hazard Early Warning & Early Action System
 FastAPI application entry point.
 """
 
@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import forecasts, alerts, chat, user, feedback
+from app.routers import forecasts, alerts, chat, user, feedback, hazards
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -32,9 +32,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    logger.info("🌊 Tayari starting up...")
+    logger.info("🌍 Tayari starting up...")
     logger.info(f"   Environment: {settings.environment}")
     from app.services.alerts import twilio_configured
+    from app.hazards.registry import HAZARD_META
+    from app.hazards.volcano_catalog import _load as load_volcanoes
+    logger.info(f"   Hazards: {len(HAZARD_META)} · volcano catalog: {len(load_volcanoes())} entries")
     logger.info(f"   Groq API: {'configured' if settings.groq_api_key else 'NOT configured (using templates)'}")
     logger.info(f"   Twilio SMS: {'configured' if twilio_configured() else 'NOT configured (simulated SMS)'}")
     logger.info(f"   Frontend URL: {settings.frontend_url}")
@@ -51,8 +54,10 @@ async def lifespan(app: FastAPI):
     from app.services.flood_data import _client
     if _client and not _client.is_closed:
         await _client.aclose()
+    from app.hazards.feeds import close_client as close_hazard_client
+    await close_hazard_client()
     await close_db()
-    logger.info("🌊 Tayari shutting down.")
+    logger.info("🌍 Tayari shutting down.")
 
 
 app = FastAPI(
@@ -130,7 +135,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# Register routers. Hazards first: it is the layer the app now leads with, and
+# its /api/hazards/{hazard}/advisory path must be matched before any broader
+# pattern a later router might introduce.
+app.include_router(hazards.router, prefix="/api", tags=["hazards"])
 app.include_router(forecasts.router, prefix="/api", tags=["forecasts"])
 app.include_router(alerts.router, prefix="/api", tags=["alerts"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
@@ -150,14 +158,22 @@ app.mount("/static/audio", StaticFiles(directory=str(_audio_dir)), name="audio")
 @app.get("/api/info")
 async def root(request: Request):
     """Health check and API info."""
+    from app.hazards.registry import HAZARD_META
+
     return {
         "name": "Tayari API",
         "version": settings.app_version,
         "status": "running",
-        "description": "AI Flood Early Warning & Early Action System",
+        "description": "AI Multi-Hazard Early Warning & Early Action System",
         "docs": "/docs",
-        "basins_monitored": 3,
+        "hazards_assessed": len(HAZARD_META),
+        "basins_calibrated": 8,
         "endpoints": {
+            "hazard_profile": "/api/hazards?lat={lat}&lon={lon}",
+            "hazard_types": "/api/hazards/types",
+            "hazard_advisory": "/api/hazards/{hazard}/advisory?lat={lat}&lon={lon}",
+            "live_events": "/api/hazards/events/live",
+            "place_search": "/api/places/search?q={name}",
             "basins": "/api/basins",
             "forecast": "/api/forecasts/{basin_id}",
             "advisory": "/api/advisory/{basin_id}",

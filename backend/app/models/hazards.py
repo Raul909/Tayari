@@ -132,6 +132,13 @@ class HazardRisk(BaseModel):
     confidence: float = Field(ge=0, le=1, default=0.5)
     data_sources: list[str] = Field(default_factory=list)
     events: list[HazardEvent] = Field(default_factory=list)
+    event_driven: bool = Field(
+        default=True,
+        description=(
+            "True when the score reflects something that is happening or forecast; False "
+            "when it is only the standing readiness floor for an unforecastable hazard"
+        ),
+    )
     degraded: bool = Field(
         default=False,
         description="True when a feed failed and this score is partial or stale",
@@ -208,6 +215,37 @@ class HazardAdvisoryRequest(BaseModel):
     place_name: Optional[str] = None
     role: UserRole = UserRole.GENERAL
     language: Language = Language.ENGLISH
+
+
+class HazardAdvisory(BaseModel):
+    """
+    What to do about one hazard, for one reader, in one language.
+
+    `language` and `requested_language` differ whenever the model could not
+    write the requested language safely and the advisory was delivered in a
+    fallback instead. The interface has to show that difference: silently
+    handing someone English when they asked for Daasanach is a smaller failure
+    than pretending the English *is* Daasanach.
+    """
+
+    hazard: HazardType
+    risk_level: RiskLevel
+    latitude: float
+    longitude: float
+    place_name: Optional[str] = None
+    role: UserRole
+    language: Language = Field(description="The language actually delivered")
+    requested_language: Language = Field(description="The language originally asked for")
+    title: str
+    body: str
+    actions: list[str] = Field(default_factory=list)
+    ai_generated: bool = Field(
+        default=False,
+        description="True when written by the model (may contain mistakes); False for "
+        "human-reviewed templates",
+    )
+    generated_at: datetime
+    valid_until: datetime
 
 
 class PlaceResult(BaseModel):

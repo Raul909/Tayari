@@ -95,7 +95,15 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         if weighted > recent_score:
             recent_score, strongest = weighted, quake
 
-    score = max(susceptibility * READINESS_CAP, recent_score)
+    readiness_floor = susceptibility * READINESS_CAP
+    score = max(readiness_floor, recent_score)
+    # Whether this card is about something that happened or about the standing
+    # readiness of a seismic region. The distinction drives which safety actions
+    # are shown: post-event advice ("treat cracked buildings as unsafe") is
+    # alarming nonsense on an ordinary day, and every seismic city sits at the
+    # readiness floor permanently. Presence of *any* recent tremor is not the
+    # test — a distant M2.6 changes nothing.
+    event_driven = recent_score > readiness_floor
 
     # ── Wording ──────────────────────────────────────────────────────────────
     felt_recently = [q for q in quakes if (q.magnitude or 0) >= 4.0]
@@ -170,6 +178,7 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         # are recorded events, not model output. The confidence figure says
         # nothing about predicting the next one, which remains impossible.
         confidence=0.9 if history is not None else 0.6,
+        event_driven=event_driven,
         lead_time="No forecast is possible — this is a readiness score",
         degraded=history is None,
         note=(

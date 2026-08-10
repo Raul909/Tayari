@@ -154,6 +154,7 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         indicators=indicators,
         events=[trigger] if trigger else [],
         confidence=0.55,
+        event_driven=trigger is not None,
         lead_time="Minutes to hours after a rupture — prepare in advance",
         note=(
             "Tayari is not a tsunami warning centre. For a live threat, follow your national "

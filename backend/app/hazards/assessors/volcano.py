@@ -165,6 +165,7 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         indicators=indicators,
         events=events,
         confidence=0.75 if active else 0.6,
+        event_driven=bool(active),
         note=(
             "Weekly activity reporting covers volcanoes with observatory coverage; a quiet "
             "entry here is not a guarantee of no unrest at an unmonitored volcano."

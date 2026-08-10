@@ -33,6 +33,7 @@ def build_risk(
     events: Optional[list[HazardEvent]] = None,
     confidence: float = 0.6,
     lead_time: Optional[str] = None,
+    event_driven: bool = True,
     degraded: bool = False,
     note: Optional[str] = None,
 ) -> HazardRisk:
@@ -54,6 +55,7 @@ def build_risk(
         confidence=round(clamp01(confidence), 2),
         data_sources=m.data_sources,
         events=events or [],
+        event_driven=event_driven,
         degraded=degraded,
         note=note,
         assessed_at=datetime.now(timezone.utc),
