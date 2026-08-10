@@ -47,6 +47,13 @@ GVP_WEEKLY_SOURCES = (
     "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
 )
 
+# The Smithsonian's GeoServer, which is a different machine from the CMS above
+# and — verified from production — is not behind the same bot protection. Its
+# eruption records lag the weekly report by a few months, so it cannot say what
+# is erupting today, but it can say what has erupted recently, reliably.
+GVP_WFS = "https://webservices.volcano.si.edu/geoserver/GVP-VOTW/ows"
+ERUPTION_LOOKBACK_YEARS = 3
+
 USGS_COUNT = "https://earthquake.usgs.gov/fdsnws/event/1/count"
 USGS_QUERY = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 USGS_EVENT_PAGE = "https://earthquake.usgs.gov/earthquakes/eventpage/"
@@ -70,6 +77,7 @@ _discharge_climatology_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=2
 _seismic_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=256)
 _quake_cache = TTLCache(ttl_seconds=180)
 _volcano_activity_cache = TTLCache(ttl_seconds=3 * 3600, max_entries=4)
+_eruption_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=4)
 _geocode_cache = TTLCache(ttl_seconds=24 * 3600)
 
 
@@ -817,6 +825,119 @@ def _unescape(text: str) -> str:
         .replace("&#39;", "'")
         .replace("&amp;", "&")
     )
+
+
+@dataclass
+class RecentEruption:
+    """A dated eruption from the Smithsonian eruption catalog."""
+
+    volcano_number: int
+    volcano_name: str
+    latitude: float
+    longitude: float
+    activity_type: str
+    vei: Optional[int]
+    start: Optional[date]
+    end: Optional[date]
+
+    @property
+    def last_activity(self) -> Optional[date]:
+        """
+        When this volcano was last observed erupting.
+
+        The end date, not the start. Merapi's current eruption began on
+        31 December 2020 and the catalog carries its activity forward to the
+        present; keying on the start date filed it under 2020 and excluded it
+        from a recent-activity window entirely, which is how Yogyakarta came to
+        be told about a volcano 85 km away instead of the one 30 km away that
+        has been erupting for five years.
+        """
+        return self.end or self.start
+
+    @property
+    def label(self) -> str:
+        when = self.last_activity
+        if when is None:
+            return "recent eruption"
+        return f"last active {when.strftime('%B %Y')}"
+
+
+async def fetch_recent_eruptions() -> Optional[list[RecentEruption]]:
+    """
+    Every eruption the Smithsonian has recorded in the last few years.
+
+    Fetched once globally and cached for a day — it is a few hundred records
+    and changes at the pace of a curated scientific catalog. Exists because the
+    weekly activity report, which is the genuinely live signal, is unreachable
+    from any datacenter IP: volcano.si.edu answers Render and Cloudflare alike
+    with a bot interstitial. This host answers both.
+
+    It lags by a few months, so it is presented as recent activity and never as
+    "erupting right now" — a distinction the volcano assessor preserves.
+    """
+    cached = _eruption_cache.get("recent")
+    if cached is not None:
+        return cached
+
+    cutoff_year = date.today().year - ERUPTION_LOOKBACK_YEARS
+    client = await get_client()
+    try:
+        resp = await client.get(
+            GVP_WFS,
+            params={
+                "service": "WFS",
+                "version": "2.0.0",
+                "request": "GetFeature",
+                "typeName": "GVP-VOTW:Smithsonian_VOTW_Holocene_Eruptions",
+                "outputFormat": "application/json",
+                # Keyed on when activity was last observed, so multi-year
+                # eruptions that began before the window are not missed.
+                "cql_filter": (
+                    f"EndDateYear >= {cutoff_year} OR StartDateYear >= {cutoff_year}"
+                ),
+                "count": 600,
+            },
+            timeout=40.0,
+        )
+        resp.raise_for_status()
+        features = resp.json().get("features") or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"GVP eruption catalog failed: {e}")
+        return None
+
+    def _date(props: dict, prefix: str) -> Optional[date]:
+        year = props.get(f"{prefix}Year")
+        if not year:
+            return None
+        try:
+            return date(int(year), int(props.get(f"{prefix}Month") or 1) or 1,
+                        int(props.get(f"{prefix}Day") or 1) or 1)
+        except (ValueError, TypeError):
+            return None
+
+    eruptions: list[RecentEruption] = []
+    for feature in features:
+        props = feature.get("properties") or {}
+        coords = (feature.get("geometry") or {}).get("coordinates") or []
+        if len(coords) < 2 or not props.get("Volcano_Number"):
+            continue
+        eruptions.append(
+            RecentEruption(
+                volcano_number=int(props["Volcano_Number"]),
+                volcano_name=props.get("Volcano_Name") or "Unknown volcano",
+                latitude=coords[1],
+                longitude=coords[0],
+                activity_type=props.get("Activity_Type") or "Eruption",
+                vei=props.get("ExplosivityIndexMax"),
+                start=_date(props, "StartDate"),
+                end=_date(props, "EndDate"),
+            )
+        )
+
+    eruptions.sort(key=lambda e: (e.last_activity or date.min), reverse=True)
+    _eruption_cache.set("recent", eruptions)
+    logger.info(f"GVP eruption catalog: {len(eruptions)} eruptions since {cutoff_year}")
+    return eruptions
 
 
 # ─── Geocoding ────────────────────────────────────────────────────────────────

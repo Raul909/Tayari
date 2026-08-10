@@ -12,6 +12,7 @@ A Holocene volcano that last erupted 6,000 years ago and one that erupted last
 year are both in the catalog and are not the same thing to live next to.
 """
 
+from datetime import datetime, time, timezone
 from typing import Optional
 
 from app.hazards.assessors.base import SUSCEPTIBILITY_FLOOR, build_risk
@@ -31,6 +32,21 @@ MAX_RELEVANT_DISTANCE_KM = 100.0
 ACTIVITY_MATCH_KM = 25.0
 
 READINESS_CAP = 0.28
+
+
+def _eruption_recency(eruption) -> float:
+    """How much a catalogued eruption should raise present concern, 0-1."""
+    when = eruption.last_activity
+    if when is None:
+        return 0.4
+    months = (datetime.now(timezone.utc).date() - when).days / 30.44
+    if months <= 6:
+        return 1.0
+    if months <= 12:
+        return 0.8
+    if months <= 24:
+        return 0.6
+    return 0.45
 
 
 def _recency_weight(last_eruption_year: Optional[int]) -> float:
@@ -87,6 +103,16 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
                 active.append((nv, report))
                 break
 
+    # Nearest volcano with an eruption in the catalog's lookback window.
+    recent: Optional[tuple[NearbyVolcano, object]] = None
+    for _, nv in scored:
+        for eruption in ctx.recent_eruptions:
+            if eruption.volcano_number == nv.volcano.number:
+                recent = (nv, eruption)
+                break
+        if recent:
+            break
+
     events: list[HazardEvent] = []
     score = susceptibility * READINESS_CAP
 
@@ -116,13 +142,47 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
                     detail=rep.status,
                 )
             )
-    elif activity_unavailable:
-        headline = f"{closest.volcano.name} is {closest.distance_km:.0f} km away — activity feed unavailable"
+    elif recent is not None:
+        # The weekly report — the genuinely live signal — is unreachable from
+        # any datacenter IP. The eruption catalog is reachable and lags by a few
+        # months, so it can say what has erupted recently but never what is
+        # erupting today. The wording keeps that distinction rather than
+        # borrowing the authority of a live feed.
+        nv, eruption = recent
+        proximity = 1.0 - ramp(nv.distance_km, 5.0, MAX_RELEVANT_DISTANCE_KM)
+        score = clamp01((0.3 + 0.35 * proximity) * _eruption_recency(eruption))
+        headline = f"{nv.volcano.name} was {eruption.label} — {nv.distance_km:.0f} km away"
         summary = (
-            f"{closest.volcano.name} is the nearest volcano. The Smithsonian/USGS weekly "
-            f"activity report could not be reached, so Tayari cannot say whether it is "
-            f"currently in unrest. Check volcano.si.edu or your national volcano observatory "
-            f"directly."
+            f"The Smithsonian eruption catalog records {nv.volcano.name} as "
+            f"{eruption.label} ({eruption.activity_type.lower()}). That catalog lags real time "
+            f"by a few months, so this is recent activity rather than a live status. A volcano "
+            f"that has erupted this recently can do so again with days to weeks of warning — "
+            f"know your evacuation route and keep dust masks for ashfall."
+        )
+        events.append(
+            HazardEvent(
+                id=f"gvp-eruption-{eruption.volcano_number}-{eruption.last_activity}",
+                hazard=hazard,
+                title=f"{eruption.volcano_name} — {eruption.activity_type}",
+                latitude=eruption.latitude,
+                longitude=eruption.longitude,
+                occurred_at=(
+                    datetime.combine(eruption.last_activity, time(), tzinfo=timezone.utc)
+                    if eruption.last_activity
+                    else None
+                ),
+                distance_km=nv.distance_km,
+                url=nv.volcano.url,
+                detail=eruption.label,
+            )
+        )
+    elif activity_unavailable:
+        headline = f"{closest.volcano.name} is {closest.distance_km:.0f} km away — live status unavailable"
+        summary = (
+            f"{closest.volcano.name} is the nearest volcano, and it has no eruption on record "
+            f"in the last three years. The weekly activity report could not be reached, so "
+            f"Tayari cannot confirm its status today — check your national volcano observatory "
+            f"if you need certainty."
         )
     else:
         last = closest.volcano.last_eruption_year
@@ -175,9 +235,9 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         summary=summary,
         indicators=indicators,
         events=events,
-        confidence=0.75 if active else (0.3 if activity_unavailable else 0.6),
+        confidence=0.75 if active else (0.5 if recent else (0.3 if activity_unavailable else 0.6)),
         event_driven=bool(active),
-        degraded=activity_unavailable,
+        degraded=activity_unavailable and recent is None,
         note=(
             "Weekly activity reporting covers volcanoes with observatory coverage; a quiet "
             "entry here is not a guarantee of no unrest at an unmonitored volcano."

@@ -43,6 +43,7 @@ class HazardContext:
     recent_quakes: Optional[list[HazardEvent]] = None
     volcanoes: list[volcano_catalog.NearbyVolcano] = field(default_factory=list)
     volcano_activity: list[feeds.VolcanoActivity] = field(default_factory=list)
+    recent_eruptions: list[feeds.RecentEruption] = field(default_factory=list)
 
     failed_feeds: list[str] = field(default_factory=list)
 
@@ -90,7 +91,7 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
     """
     Gather every feed for a location in parallel.
 
-    Seven upstream calls, one round-trip's worth of latency. `return_exceptions`
+    Eight upstream calls, one round-trip's worth of latency. `return_exceptions`
     keeps a single raising task from cancelling its siblings — the whole point of
     doing this concurrently is lost if one slow API can void the other five.
     """
@@ -105,9 +106,13 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
         feeds.fetch_seismic_history(latitude, longitude),
         feeds.fetch_recent_quakes(latitude, longitude),
         feeds.fetch_volcano_activity(),
+        feeds.fetch_recent_eruptions(),
         return_exceptions=True,
     )
-    terrain, weather, climate, discharge, discharge_clim, seismic, quakes, activity = results
+    (
+        terrain, weather, climate, discharge, discharge_clim,
+        seismic, quakes, activity, eruptions,
+    ) = results
 
     def _unwrap(value, label: str, default=None):
         if isinstance(value, BaseException):
@@ -127,6 +132,7 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
     ctx.seismic = _unwrap(seismic, "seismic")
     ctx.recent_quakes = _unwrap(quakes, "earthquakes")
     ctx.volcano_activity = _unwrap(activity, "volcano_activity", []) or []
+    ctx.recent_eruptions = _unwrap(eruptions, "eruption_catalog", []) or []
 
     # Local only — the catalog is in memory, so this cannot fail on the network.
     ctx.volcanoes = volcano_catalog.nearby_volcanoes(latitude, longitude, radius_km=150.0)
