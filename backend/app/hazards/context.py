@@ -38,6 +38,7 @@ class HazardContext:
     weather: Optional[feeds.WeatherBundle] = None
     climate: Optional[feeds.ClimateBaseline] = None
     discharge: Optional[list[DailyDischarge]] = None
+    discharge_climatology: Optional[feeds.DischargeClimatology] = None
     seismic: Optional[feeds.SeismicHistory] = None
     recent_quakes: Optional[list[HazardEvent]] = None
     volcanoes: list[volcano_catalog.NearbyVolcano] = field(default_factory=list)
@@ -89,7 +90,7 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
     """
     Gather every feed for a location in parallel.
 
-    Six upstream services, one round-trip's worth of latency. `return_exceptions`
+    Seven upstream calls, one round-trip's worth of latency. `return_exceptions`
     keeps a single raising task from cancelling its siblings — the whole point of
     doing this concurrently is lost if one slow API can void the other five.
     """
@@ -100,12 +101,13 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
         feeds.fetch_weather_bundle(latitude, longitude),
         feeds.fetch_climate_baseline(latitude, longitude),
         _discharge(latitude, longitude),
+        feeds.fetch_discharge_climatology(latitude, longitude),
         feeds.fetch_seismic_history(latitude, longitude),
         feeds.fetch_recent_quakes(latitude, longitude),
         feeds.fetch_volcano_activity(),
         return_exceptions=True,
     )
-    terrain, weather, climate, discharge, seismic, quakes, activity = results
+    terrain, weather, climate, discharge, discharge_clim, seismic, quakes, activity = results
 
     def _unwrap(value, label: str, default=None):
         if isinstance(value, BaseException):
@@ -121,6 +123,7 @@ async def build_context(latitude: float, longitude: float) -> HazardContext:
     ctx.weather = _unwrap(weather, "weather")
     ctx.climate = _unwrap(climate, "climate")
     ctx.discharge = _unwrap(discharge, "discharge")
+    ctx.discharge_climatology = _unwrap(discharge_clim, "discharge_climatology")
     ctx.seismic = _unwrap(seismic, "seismic")
     ctx.recent_quakes = _unwrap(quakes, "earthquakes")
     ctx.volcano_activity = _unwrap(activity, "volcano_activity", []) or []

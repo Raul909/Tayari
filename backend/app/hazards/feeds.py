@@ -54,6 +54,7 @@ CLIMATOLOGY_YEARS = 5
 
 _weather_cache = TTLCache(ttl_seconds=3600)
 _climate_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=256)
+_discharge_climatology_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=256)
 _seismic_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=256)
 _quake_cache = TTLCache(ttl_seconds=180)
 _volcano_activity_cache = TTLCache(ttl_seconds=3 * 3600, max_entries=4)
@@ -115,6 +116,13 @@ class ClimateBaseline:
     # place the current 90-day total in its local distribution.
     precip_90d_history: list[float] = field(default_factory=list)
     annual_precip_mean: Optional[float] = None
+    # How unevenly rain falls across the year: (wettest month - driest month)
+    # over the mean month. Total rainfall alone cannot tell a fire climate from
+    # a wet one — Amsterdam and a Mediterranean hillside can receive similar
+    # annual totals — but the shape of the year can. Rain spread evenly keeps
+    # vegetation green; rain concentrated in one season grows a fuel load and
+    # then cures it, which is the pattern every major fire climate shares.
+    precip_seasonality: Optional[float] = None
 
     def precip_percentile(self, current_90d: float) -> Optional[float]:
         """Where the current 90-day rainfall total sits historically, 0-1."""
@@ -122,6 +130,50 @@ class ClimateBaseline:
             return None
         below = sum(1 for v in self.precip_90d_history if v <= current_90d)
         return below / len(self.precip_90d_history)
+
+
+@dataclass
+class DischargeClimatology:
+    """
+    Flow percentiles for one river cell, standing in for calibrated thresholds
+    at locations Tayari has not individually calibrated.
+    """
+
+    years: int
+    samples: int
+    p50: float
+    p90: float
+    p98: float
+    record_max: float
+    median_annual_max: Optional[float] = None
+
+    @property
+    def bankfull(self) -> float:
+        """
+        The flow at which this river fills its channel, in m³/s.
+
+        Taken as the median annual maximum — roughly a 2-year return period,
+        the conventional bankfull estimate. An earlier version used the 98th
+        percentile of daily flow, which sounds strict and is not: a river
+        exceeds it on about seven days a year, every year, which is a seasonal
+        high and emphatically not a flood. That version had Tokyo at EXTREME
+        during ordinary monsoon rain.
+        """
+        if self.median_annual_max is not None:
+            return self.median_annual_max
+        return self.p98
+
+    @property
+    def has_river(self) -> bool:
+        """
+        Whether this coordinate sits on a river GloFAS actually models.
+
+        Off the river network the model still returns a number, just a
+        vanishingly small one. Without this check a hilltop in the desert gets a
+        flood card whose threshold is a fraction of a cubic metre per second,
+        and it would light up the first time it rained.
+        """
+        return self.p98 >= 1.0
 
 
 @dataclass
@@ -134,6 +186,14 @@ class SeismicHistory:
     max_magnitude: Optional[float] = None
     max_event_year: Optional[int] = None
     max_event_place: Optional[str] = None
+    # Great earthquakes anywhere in the surrounding ocean basin. Kept separate
+    # from the local counts because tsunami sources are characteristically
+    # *distant*: the 2004 Indian Ocean tsunami killed people in Chennai from a
+    # rupture 1,500 km away, and Chennai's own 250 km neighbourhood is
+    # essentially aseismic. Judging tsunami exposure on local seismicity would
+    # have cleared every coastline that has actually suffered one.
+    distant_great_quakes: int = 0
+    distant_radius_km: int = 0
 
     @property
     def annual_rate_m45(self) -> float:
@@ -179,6 +239,88 @@ async def close_client() -> None:
     if _client is not None and not _client.is_closed:
         await _client.aclose()
     _client = None
+
+
+# ─── River discharge climatology ──────────────────────────────────────────────
+
+FLOOD_ARCHIVE_API = "https://flood-api.open-meteo.com/v1/flood"
+
+
+async def fetch_discharge_climatology(
+    latitude: float, longitude: float
+) -> Optional["DischargeClimatology"]:
+    """
+    Five years of daily river discharge at a point, reduced to flow percentiles.
+
+    The eight curated basins have thresholds calibrated against documented
+    historical floods — the most trustworthy numbers in the system. An arbitrary
+    coordinate has nothing of the kind, and inventing an absolute threshold in
+    m³/s would be meaningless across rivers spanning six orders of magnitude.
+
+    So the threshold comes from the river's own record: what counts as a flood
+    here is a flow this river rarely reaches. It is weaker than true return-period
+    analysis and is labelled as such wherever it surfaces, but it is derived from
+    real observations at the real location rather than guessed.
+    """
+    key = geo_key(latitude, longitude, precision=2)
+    cached = _discharge_climatology_cache.get(key)
+    if cached is not None:
+        return cached
+
+    end = date.today() - timedelta(days=2)
+    start = end - timedelta(days=365 * CLIMATOLOGY_YEARS)
+
+    client = await get_client()
+    try:
+        resp = await client.get(
+            FLOOD_ARCHIVE_API,
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "daily": "river_discharge",
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+            },
+            timeout=45.0,
+        )
+        resp.raise_for_status()
+        daily = resp.json().get("daily") or {}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Discharge climatology failed at ({latitude}, {longitude}): {e}")
+        return None
+
+    times = daily.get("time") or []
+    raw = daily.get("river_discharge") or []
+    values = [v for v in raw if v is not None]
+    if len(values) < 365:
+        return None
+
+    # Annual maxima, for the bankfull threshold. One peak per year is the
+    # standard input to flood-frequency analysis, and the median of them
+    # approximates the 2-year return period — the flow at which a channel is
+    # full and water starts spilling onto the floodplain.
+    by_year: dict[int, float] = {}
+    for stamp, value in zip(times, raw):
+        if value is None:
+            continue
+        year = int(stamp[:4])
+        if value > by_year.get(year, float("-inf")):
+            by_year[year] = value
+    annual_maxima = sorted(by_year.values())
+
+    climatology = DischargeClimatology(
+        years=CLIMATOLOGY_YEARS,
+        samples=len(values),
+        p50=_percentile(values, 0.50) or 0.0,
+        p90=_percentile(values, 0.90) or 0.0,
+        p98=_percentile(values, 0.98) or 0.0,
+        median_annual_max=(
+            _percentile(annual_maxima, 0.50) if len(annual_maxima) >= 3 else None
+        ),
+        record_max=round(max(values), 2),
+    )
+    _discharge_climatology_cache.set(key, climatology)
+    return climatology
 
 
 # ─── Weather ──────────────────────────────────────────────────────────────────
@@ -312,6 +454,20 @@ async def fetch_climate_baseline(latitude: float, longitude: float) -> Optional[
     if valid_precip:
         annual_mean = sum(valid_precip) / len(valid_precip) * 365.0
 
+    # Monthly climatology across all sampled years, reduced to a seasonality
+    # index. Uses daily means per month rather than monthly totals so months of
+    # unequal length and partial years at the edges of the window compare fairly.
+    monthly_totals: dict[int, list[float]] = {}
+    for d, p in zip(dates, precip_series):
+        if p is not None:
+            monthly_totals.setdefault(d.month, []).append(p)
+    seasonality = None
+    if len(monthly_totals) == 12:
+        monthly_means = [sum(v) / len(v) for v in monthly_totals.values()]
+        overall = sum(monthly_means) / len(monthly_means)
+        if overall > 0:
+            seasonality = round((max(monthly_means) - min(monthly_means)) / overall, 3)
+
     baseline = ClimateBaseline(
         years=CLIMATOLOGY_YEARS,
         tmax_seasonal_mean=_mean(seasonal_tmax),
@@ -319,6 +475,7 @@ async def fetch_climate_baseline(latitude: float, longitude: float) -> Optional[
         tmax_seasonal_p98=_percentile(seasonal_tmax, 0.98),
         precip_90d_history=history_90d,
         annual_precip_mean=round(annual_mean, 1) if annual_mean is not None else None,
+        precip_seasonality=seasonality,
     )
     _climate_cache.set(key, baseline)
     return baseline
@@ -343,6 +500,13 @@ SEISMIC_SINCE_YEAR = 1970
 RECENT_QUAKE_RADIUS_KM = 400
 RECENT_QUAKE_DAYS = 30
 RECENT_QUAKE_MIN_MAG = 2.5
+
+# Tsunami sources are basin-scale. 3,000 km covers the subduction zone that
+# actually threatens a given coastline — Sumatra from Sri Lanka, Chile from
+# Polynesia, the Aleutians from Hawai'i — and M7.5 is roughly the floor for
+# generating a destructive far-field wave.
+TSUNAMI_SOURCE_RADIUS_KM = 3000
+TSUNAMI_SOURCE_MIN_MAGNITUDE = 7.5
 
 
 async def fetch_seismic_history(latitude: float, longitude: float) -> Optional[SeismicHistory]:
@@ -391,8 +555,24 @@ async def fetch_seismic_history(latitude: float, longitude: float) -> Optional[S
         features = resp.json().get("features") or []
         return features[0] if features else None
 
+    async def _distant_great() -> Optional[int]:
+        """Great earthquakes across the surrounding ocean basin — tsunami sources."""
+        resp = await client.get(
+            USGS_COUNT,
+            params={
+                "format": "geojson",
+                "latitude": latitude,
+                "longitude": longitude,
+                "maxradiuskm": TSUNAMI_SOURCE_RADIUS_KM,
+                "minmagnitude": TSUNAMI_SOURCE_MIN_MAGNITUDE,
+                "starttime": "1900-01-01",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json().get("count")
+
     try:
-        count, largest = await asyncio.gather(_count(), _largest())
+        count, largest, distant = await asyncio.gather(_count(), _largest(), _distant_great())
     except Exception as e:  # noqa: BLE001
         logger.warning(f"USGS seismic history failed at ({latitude}, {longitude}): {e}")
         return None
@@ -401,6 +581,8 @@ async def fetch_seismic_history(latitude: float, longitude: float) -> Optional[S
         radius_km=SEISMIC_RADIUS_KM,
         since_year=SEISMIC_SINCE_YEAR,
         count_m45=count or 0,
+        distant_great_quakes=distant or 0,
+        distant_radius_km=TSUNAMI_SOURCE_RADIUS_KM,
     )
     if largest:
         props = largest.get("properties") or {}
