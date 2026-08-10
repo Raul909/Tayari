@@ -277,7 +277,8 @@ async def health_feeds():
             hz.USGS_COUNT,
             {"format": "geojson", "minmagnitude": 6, "starttime": "2026-01-01"},
         ),
-        "volcanoes (Smithsonian GVP)": (hz.GVP_WEEKLY_RSS, {}),
+        "volcanoes (Smithsonian GVP)": (hz.GVP_WEEKLY_SOURCES[0], {}),
+        "volcanoes direct (Smithsonian GVP)": (hz.GVP_WEEKLY_SOURCES[1], {}),
     }
 
     async def probe(name: str, url: str, params: dict) -> dict:

@@ -38,7 +38,14 @@ logger = logging.getLogger(__name__)
 FORECAST_API = settings.weather_api_base
 ARCHIVE_API = settings.archive_api_base
 GEOCODE_API = settings.geocode_api_base
-GVP_WEEKLY_RSS = settings.volcano_activity_feed
+# Two paths to the same file, tried in order. volcano.si.edu answers a
+# datacenter IP with a 46 KB HTML interstitial rather than the report, and it
+# does so intermittently and differently for Render's egress and Cloudflare's —
+# so whichever one is being challenged right now, the other usually is not.
+GVP_WEEKLY_SOURCES = (
+    settings.volcano_activity_feed,
+    "https://volcano.si.edu/news/WeeklyVolcanoRSS.xml",
+)
 
 USGS_COUNT = "https://earthquake.usgs.gov/fdsnws/event/1/count"
 USGS_QUERY = "https://earthquake.usgs.gov/fdsnws/event/1/query"
@@ -736,18 +743,35 @@ async def fetch_volcano_activity() -> Optional[list[VolcanoActivity]]:
         return cached
 
     client = await get_client()
-    try:
-        resp = await client.get(GVP_WEEKLY_RSS, timeout=40.0)
-        resp.raise_for_status()
-        xml = resp.content.decode("latin-1", errors="replace")
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"GVP weekly activity feed failed: {e}")
-        return None
+    xml = None
+    for source in GVP_WEEKLY_SOURCES:
+        try:
+            resp = await client.get(
+                source,
+                timeout=40.0,
+                headers={"Accept": "application/rss+xml, application/xml, text/xml"},
+            )
+            resp.raise_for_status()
+            body = resp.content.decode("latin-1", errors="replace")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"GVP weekly feed unreachable via {source}: {e}")
+            continue
 
-    if "<rss" not in xml and "<item>" not in xml:
-        # A 200 carrying something that is not the report — a proxy error page,
-        # a captive portal. An empty week and a wrong body are not the same fact.
-        logger.warning("GVP weekly feed returned a non-RSS body; treating as unavailable")
+        # A 200 carrying HTML is the bot interstitial, not the report. An empty
+        # week and a wrong body are not the same fact, and only one of them may
+        # be cached as an answer.
+        if "<rss" not in body and "<item>" not in body:
+            logger.warning(
+                f"GVP weekly feed via {source} returned {len(body)} bytes of non-RSS "
+                f"content (likely a bot interstitial); trying the next source"
+            )
+            continue
+
+        xml = body
+        break
+
+    if xml is None:
+        logger.error("GVP weekly activity feed unavailable from every source")
         return None
 
     activity: list[VolcanoActivity] = []
