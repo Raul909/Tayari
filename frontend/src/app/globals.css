@@ -1738,3 +1738,507 @@ tr:hover td { background: var(--surface-sunken); }
   color: #52c41a;
   margin-bottom: 16px;
 }
+
+/* ─── Multi-hazard dashboard ──────────────────────────────────────────────── */
+/* The location panel replaces the basin list as the primary surface. It keeps  */
+/* the same overlay-on-map geometry so the app still feels like itself.         */
+
+.hazard-panel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 5;
+}
+
+/* ── Location picker ── */
+
+.location-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.location-bar-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.location-search {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.location-search-input {
+  width: 100%;
+}
+
+.location-search-spinner {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.location-detect {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.location-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.location-results button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition);
+}
+
+.location-results button:hover,
+.location-results button:focus-visible {
+  background: var(--bg-secondary);
+}
+
+.location-result-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.location-result-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.location-current {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.location-current-busy {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.location-error {
+  font-size: 13px;
+}
+
+/* ── Empty state ── */
+
+.hazard-empty {
+  padding: 4px 2px 8px;
+}
+
+.hazard-empty-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+
+.hazard-empty-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+/* ── Profile summary ── */
+
+.hazard-summary {
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hazard-summary-headline {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.hazard-summary-note {
+  font-size: 12px;
+  color: var(--risk-moderate);
+}
+
+/* ── Hazard list ── */
+
+.hazard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hazard-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.hazard-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.hazard-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.hazard-card-icon {
+  font-size: 20px;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
+
+.hazard-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.hazard-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hazard-card-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hazard-card-headline {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.hazard-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.hazard-card-degraded {
+  color: var(--risk-moderate);
+}
+
+.hazard-screened {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+}
+
+/* ── Hazard detail ── */
+
+.hazard-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hazard-detail-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.hazard-detail-icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.hazard-detail-title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.hazard-detail-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.hazard-detail-headline {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.hazard-detail-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.hazard-detail-lead {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hazard-detail-lead-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* ── Indicators ── */
+
+.indicator-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.indicator-label {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.indicator-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.indicator-trend {
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.indicator-trend--rising { color: var(--risk-high); background: var(--risk-high-bg); }
+.indicator-trend--falling { color: var(--risk-low); background: var(--risk-low-bg); }
+.indicator-trend--steady { color: var(--text-muted); background: var(--bg-tertiary); }
+
+.indicator-detail {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  flex-basis: 100%;
+  line-height: 1.45;
+}
+
+/* ── Events ── */
+
+.event-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.event-item {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 10px;
+}
+
+.event-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.event-title a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.event-title a:hover { text-decoration: underline; }
+
+.event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* ── Advisory controls & sources ── */
+
+.advisory-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.hazard-sources .source-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.hazard-sources .source-list li::before {
+  content: '↳ ';
+  color: var(--text-muted);
+}
+
+.source-note {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.source-confidence {
+  margin-top: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* ── Map markers ── */
+
+.map-quake {
+  border-radius: 50%;
+  background: rgba(192, 67, 43, 0.35);
+  border: 1.5px solid var(--risk-high);
+  cursor: pointer;
+}
+
+.map-volcano {
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 2px rgba(35, 33, 28, 0.4));
+}
+
+.map-you {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(35, 33, 28, 0.45);
+  cursor: pointer;
+}
+
+/* ── Small screens ── */
+
+@media (max-width: 768px) {
+  .hazard-panel {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+  }
+
+  .location-bar-row {
+    flex-direction: column;
+  }
+
+  .location-detect {
+    width: 100%;
+  }
+}

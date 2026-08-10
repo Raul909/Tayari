@@ -11,7 +11,12 @@ export default function Navbar() {
   const pathname = usePathname();
 
   const links = [
-    { href: '/', label: 'Dashboard' },
+    { href: '/', label: 'Hazards' },
+    // The eight calibrated flood basins keep their own entry rather than being
+    // folded into the location view: their thresholds are tuned against real
+    // historical floods, which makes them a genuinely different — and better —
+    // answer for the places they cover.
+    { href: '/basins', label: 'Basins' },
     { href: '/alerts', label: 'Alerts' },
     { href: '/report', label: 'Report' },
   ];
@@ -20,7 +25,7 @@ export default function Navbar() {
     <nav className="navbar">
       <Link href="/" className="navbar-brand">
         <div className="navbar-title">Tayari</div>
-        <div className="navbar-subtitle">Flood Early Warning</div>
+        <div className="navbar-subtitle">Multi-Hazard Early Warning</div>
       </Link>
 
       <div className="navbar-nav">

@@ -1,199 +1,152 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
-import dynamic from 'next/dynamic';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { fetchBasins, fetchForecast, fetchAdvisory, fetchReports, resolveAssetUrl } from '@/lib/api';
-import {
-  RISK_COLORS,
-  MAP_CENTER,
-  MAP_STYLE_URL,
-  ROLES,
-  LANGUAGE_LABELS,
-  REPORT_STATUSES,
-} from '@/lib/constants';
-import { getDeviceTier, mapOptionsForTier, loadMapLibrary, onIdle, TIERS } from '@/lib/perf';
-import { useToast } from '@/components/Toast';
-import RiskGauge from '@/components/RiskGauge';
-import AdvisoryCard from '@/components/AdvisoryCard';
-import ImpactPanel from '@/components/ImpactPanel';
+import HazardCard from '@/components/HazardCard';
+import HazardDetail from '@/components/HazardDetail';
+import LocationBar from '@/components/LocationBar';
 import OnboardingSplash from '@/components/OnboardingSplash';
+import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
+import { MAP_STYLE_URL, RISK_COLORS } from '@/lib/constants';
+import {
+  fetchHazardProfile,
+  fetchLiveEvents,
+  hazardMeta,
+  loadLocation,
+  placeLabel,
+  saveLocation,
+} from '@/lib/hazards';
+import { getDeviceTier, loadMapLibrary, mapOptionsForTier, onIdle, TIERS } from '@/lib/perf';
 
-// chart.js (~150 KB) only appears once a basin is selected, so split it out of
-// the initial dashboard bundle instead of shipping it to every first paint.
-const ForecastChart = dynamic(() => import('@/components/ForecastChart'), {
-  ssr: false,
-  loading: () => (
-    <div className="loading-container" style={{ padding: '24px' }}>
-      <div className="spinner" />
-    </div>
-  ),
-});
-
-export default function Dashboard() {
+/**
+ * The multi-hazard dashboard.
+ *
+ * Tayari used to open on a map of eight river basins, which answered "is the
+ * Shabelle about to flood?" and nothing else. It now opens on a location and
+ * asks the question people actually have: what threatens where I am, and what
+ * should I do about it?
+ *
+ * The eight calibrated basins have not gone anywhere — they live at /basins and
+ * remain the more trustworthy answer for the places they cover.
+ */
+export default function HazardDashboard() {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
-  // The lazily-imported maplibre-gl namespace, kept so the marker effects can
-  // construct Markers/Popups without importing the (heavy) module themselves.
   const maplibreRef = useRef(null);
-  const markersRef = useRef([]);
-  const reportMarkersRef = useRef([]);
+  const eventMarkers = useRef([]);
+  const locationMarker = useRef(null);
   const resizeObserverRef = useRef(null);
-  // Monotonic token so a slow forecast response can't overwrite a newer one.
-  const forecastReqId = useRef(0);
-  // Guards so the (async) map init runs exactly once even if several triggers fire.
-  const mapInitStartedRef = useRef(false);
-  const mapTierRef = useRef(TIERS.HIGH);
+  const mapInitStarted = useRef(false);
+  const mapTier = useRef(TIERS.HIGH);
+  // Monotonic token so a slow profile response cannot overwrite a newer one.
+  const profileId = useRef(0);
 
-  const [basins, setBasins] = useState([]);
-  const [reports, setReports] = useState([]);
-  const [selectedBasin, setSelectedBasin] = useState(null);
-  const [forecast, setForecast] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [forecastLoading, setForecastLoading] = useState(false);
-  const [role, setRole] = useState('general');
-  const [language, setLanguage] = useState('en');
+  const [location, setLocation] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [events, setEvents] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Map lifecycle: `mapReady` flips true once the style has loaded (markers wait
-  // for it); `deferMap` means we're on a metered/low device and are waiting for
-  // the user to tap "Load map" before pulling the bundle.
   const [mapReady, setMapReady] = useState(false);
   const [deferMap, setDeferMap] = useState(false);
 
   const { user, loading: authLoading, isGuest, setGuest } = useAuth();
-
-  // Refs mirror role/language so map markers (created once) always read the
-  // current values instead of a value captured when the marker was made.
-  const roleRef = useRef(role);
-  const languageRef = useRef(language);
-  useEffect(() => {
-    roleRef.current = role;
-    languageRef.current = language;
-  }, [role, language]);
-
   const { notify } = useToast();
 
-  async function loadBasins() {
-    try {
+  // ── Location → profile ──────────────────────────────────────────────────
+
+  const loadProfile = useCallback(
+    async (target) => {
+      const id = ++profileId.current;
       setLoading(true);
-      const data = await fetchBasins();
-      setBasins(data);
       setError(null);
-    } catch (err) {
-      console.error('Failed to load basins:', err);
-      const msg = 'Could not reach the Tayari API. Please check your connection or try again in a moment.';
-      setError(msg);
-      notify({ type: 'error', title: 'Connection failed', message: msg });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadReports() {
-    try {
-      const data = await fetchReports();
-      setReports(data);
-    } catch (err) {
-      // Non-fatal — the map still works without community reports.
-      console.error('Failed to load reports:', err);
-    }
-  }
-
-  const loadForecast = async (basin) => {
-    const reqId = ++forecastReqId.current;
-    setForecastLoading(true);
-    try {
-      const data = await fetchForecast(basin.id, roleRef.current, languageRef.current);
-      if (reqId === forecastReqId.current) {
-        setForecast(data);
+      try {
+        const data = await fetchHazardProfile(target);
+        if (id !== profileId.current) return;
+        setProfile(data);
+        setSelected(null);
+        // The API resolves the place name and country; keeping them means a
+        // reload shows "Kathmandu, Nepal" rather than a pair of numbers.
+        const resolved = { ...target, ...data.location };
+        setLocation(resolved);
+        saveLocation(resolved);
+      } catch (e) {
+        if (id !== profileId.current) return;
+        const message =
+          e.status === 502
+            ? 'The hazard data feeds are not responding. Please try again in a moment.'
+            : 'Could not assess this location. Please check your connection and try again.';
+        setError(message);
+        notify({ type: 'error', title: 'Assessment failed', message });
+      } finally {
+        if (id === profileId.current) setLoading(false);
       }
-      // Some backend builds don't embed the advisory in the forecast payload.
-      // When it's missing, pull it from the dedicated advisory endpoint and
-      // patch it in, so the advisory card always renders. Still gated by reqId
-      // so a stale basin's advisory can't overwrite a newer selection.
-      if (!data.advisory) {
-        try {
-          const adv = await fetchAdvisory(
-            basin.id,
-            roleRef.current,
-            languageRef.current
-          );
-          if (reqId === forecastReqId.current && adv?.advisory) {
-            setForecast((prev) =>
-              prev && prev.basin?.id === basin.id
-                ? { ...prev, advisory: adv.advisory }
-                : prev
-            );
-          }
-        } catch (advErr) {
-          // Non-fatal — the rest of the forecast still shows.
-          console.error('Failed to load advisory fallback:', advErr);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load forecast:', err);
-      if (reqId === forecastReqId.current) {
-        notify({
-          type: 'error',
-          title: 'Forecast unavailable',
-          message: `Could not load the forecast for ${basin.name}.`,
+    },
+    [notify]
+  );
+
+  const handleSelectLocation = useCallback(
+    (place) => {
+      setLocation(place);
+      setProfile(null);
+      loadProfile(place);
+      if (mapInstance.current) {
+        mapInstance.current.flyTo({
+          center: [place.longitude, place.latitude],
+          zoom: 7,
+          duration: 1400,
+          essential: true,
         });
       }
-    } finally {
-      if (reqId === forecastReqId.current) {
-        setForecastLoading(false);
-      }
-    }
-  };
+    },
+    [loadProfile]
+  );
 
-  const selectBasin = (basin) => {
-    setSelectedBasin(basin);
-    if (mapInstance.current) {
-      mapInstance.current.flyTo({
-        center: [basin.longitude, basin.latitude],
-        zoom: 9,
-        duration: 1400,
-        essential: true,
-      });
-    }
-    const langs = basin.languages?.length ? basin.languages : ['en'];
-    if (!langs.includes(languageRef.current)) {
-      setLanguage(langs[0]);
-    } else {
-      loadForecast(basin);
-    }
-  };
-
+  // Restore the last place on load. No automatic geolocation prompt: a
+  // permission dialog before the app has shown what it is for gets refused, and
+  // a refusal is remembered by the browser far longer than the visit.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadBasins();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadReports();
+    const saved = loadLocation();
+    if (saved) {
+      // Reading localStorage is exactly the "synchronize with an external
+      // system" case the rule exists to allow; it just cannot see that from
+      // here. Setting the location before the profile arrives means the bar
+      // shows the place name immediately rather than after the round-trip.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLocation(saved);
+      loadProfile(saved);
+    }
+  }, [loadProfile]);
+
+  // Live worldwide events for the map. Non-fatal — the map degrades to no pins.
+  useEffect(() => {
+    fetchLiveEvents({ minMagnitude: 4.5, days: 7 })
+      .then(setEvents)
+      .catch(() => setEvents(null));
   }, []);
 
-  // Create the map. Async because the maplibre bundle is code-split and pulled
-  // on demand (keeping it off the initial dashboard load). Safe to call from
-  // multiple triggers — the ref guard makes it idempotent.
+  // ── Map ─────────────────────────────────────────────────────────────────
+
   const initMap = useCallback(async () => {
-    if (mapInitStartedRef.current || mapInstance.current || !mapRef.current) return;
-    mapInitStartedRef.current = true;
+    if (mapInitStarted.current || mapInstance.current || !mapRef.current) return;
+    mapInitStarted.current = true;
     setDeferMap(false);
 
     try {
       const maplibregl = await loadMapLibrary();
       maplibreRef.current = maplibregl;
-      // The container may have unmounted while the bundle was downloading.
       if (!mapRef.current) {
-        mapInitStartedRef.current = false;
+        mapInitStarted.current = false;
         return;
       }
 
+      const saved = loadLocation();
       const map = new maplibregl.Map({
         container: mapRef.current,
         style: MAP_STYLE_URL,
-        center: [MAP_CENTER.lng, MAP_CENTER.lat],
-        zoom: MAP_CENTER.zoom,
+        center: saved ? [saved.longitude, saved.latitude] : [20, 15],
+        zoom: saved ? 6 : 1.4,
         attributionControl: true,
         cooperativeGestures: true,
         pitchWithRotate: false,
@@ -201,52 +154,40 @@ export default function Dashboard() {
         maxPitch: 0,
         failIfMajorPerformanceCaveat: false,
         trackResize: true,
-        ...mapOptionsForTier(mapTierRef.current),
+        ...mapOptionsForTier(mapTier.current),
       });
 
       map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
       map.once('load', () => setMapReady(true));
       mapInstance.current = map;
 
-      // When the side panel opens/closes the map container changes width.
-      // MapLibre doesn't notice on its own, so its canvas keeps the old size
-      // and the view appears to jump toward a corner. Re-sync on every resize.
-      let resizeFrame;
-      const ro = new ResizeObserver(() => {
-        if (resizeFrame) cancelAnimationFrame(resizeFrame);
-        resizeFrame = requestAnimationFrame(() => map.resize());
+      // The side panel changes the container width; MapLibre does not notice on
+      // its own and the view drifts toward a corner until told to resize.
+      let frame;
+      const observer = new ResizeObserver(() => {
+        if (frame) cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => map.resize());
       });
-      ro.observe(mapRef.current);
-      resizeObserverRef.current = ro;
+      observer.observe(mapRef.current);
+      resizeObserverRef.current = observer;
     } catch (e) {
       console.error('Failed to initialize map:', e);
-      mapInitStartedRef.current = false;
-      setError('The map could not start (WebGL error). Please check your browser settings.');
+      mapInitStarted.current = false;
     }
   }, []);
 
-  // Decide *when* to load the map, based on device tier. Runs once the dashboard
-  // (and therefore the map container) is actually on screen — not while the
-  // onboarding splash or auth spinner is showing.
   useEffect(() => {
     if (authLoading || !(user || isGuest)) return;
-
     const tier = getDeviceTier();
-    mapTierRef.current = tier;
-
-    // Metered / low-end: wait for an explicit tap so we never auto-pull ~1 MB.
+    mapTier.current = tier;
     if (tier === TIERS.LOW) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeferMap(true);
       return;
     }
-
-    // Otherwise load after first paint during idle — sooner on capable devices.
-    const cancel = onIdle(() => initMap(), tier === TIERS.HIGH ? 800 : 2000);
-    return cancel;
+    return onIdle(() => initMap(), tier === TIERS.HIGH ? 800 : 2000);
   }, [authLoading, user, isGuest, initMap]);
 
-  // Tear the map down on unmount.
   useEffect(
     () => () => {
       if (resizeObserverRef.current) {
@@ -261,140 +202,86 @@ export default function Dashboard() {
     []
   );
 
-  // Basin markers — (re)built once the map style is ready and whenever basins
-  // change. Gating on `mapReady` means markers still appear even if the basin
-  // data arrived before the (lazily loaded) map did.
+  // Live event pins: earthquakes sized by magnitude, volcanoes as markers.
   useEffect(() => {
-    if (!mapInstance.current || !mapReady || basins.length === 0) return;
-
+    if (!mapInstance.current || !mapReady || !events) return;
     const maplibregl = maplibreRef.current;
     if (!maplibregl) return;
 
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    eventMarkers.current.forEach((m) => m.remove());
+    eventMarkers.current = [];
 
-    basins.forEach((basin) => {
-      const riskColor = RISK_COLORS[basin.current_risk] || RISK_COLORS.LOW;
-      const prob =
-        basin.flood_probability != null
-          ? `${(basin.flood_probability * 100).toFixed(0)}%`
-          : '—';
-
-      // Outer element: MapLibre owns its `transform` to position the marker on
-      // the map. We must NOT write to el.style.transform ourselves — doing so
-      // wipes out MapLibre's translate() and the marker jumps to the map's
-      // top-left corner. So the hover animation lives on an inner node instead.
+    (events.earthquakes || []).forEach((quake) => {
+      const magnitude = quake.magnitude || 0;
+      // Area, not radius, scales with magnitude — a linear radius makes an M7
+      // look only slightly worse than an M5, which is the opposite of true.
+      const size = Math.max(8, Math.min(34, (magnitude - 3) * 7));
       const el = document.createElement('div');
-      el.style.cssText = `
-        width: 36px;
-        height: 36px;
-        cursor: pointer;
-      `;
-      el.title = basin.name;
-
-      const inner = document.createElement('div');
-      inner.style.cssText = `
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        background: ${riskColor};
-        border: 2px solid #ffffff;
-        box-shadow: 0 1px 3px rgba(35,33,28,0.35);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 600;
-        color: #ffffff;
-        transition: transform 140ms ease, box-shadow 140ms ease;
-      `;
-      inner.textContent = prob;
-      el.appendChild(inner);
-
-      el.addEventListener('mouseenter', () => {
-        inner.style.transform = 'scale(1.15)';
-        inner.style.boxShadow = '0 3px 8px rgba(35,33,28,0.45)';
-        el.style.zIndex = '10';
-      });
-      el.addEventListener('mouseleave', () => {
-        inner.style.transform = 'scale(1)';
-        inner.style.boxShadow = '0 1px 3px rgba(35,33,28,0.35)';
-        el.style.zIndex = '';
-      });
-      el.addEventListener('click', () => selectBasin(basin));
+      el.className = 'map-quake';
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      el.title = quake.title;
 
       const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([basin.longitude, basin.latitude])
+        .setLngLat([quake.longitude, quake.latitude])
+        .setPopup(
+          new maplibregl.Popup({ offset: 10, closeButton: false }).setHTML(
+            `<strong>${escapeHtml(quake.title)}</strong><br/>` +
+              `<span style="color:#6b6558">${
+                quake.depth_km != null ? `${quake.depth_km.toFixed(0)} km deep · ` : ''
+              }${quake.occurred_at ? new Date(quake.occurred_at).toLocaleString() : ''}</span>`
+          )
+        )
         .addTo(mapInstance.current);
-
-      markersRef.current.push(marker);
+      eventMarkers.current.push(marker);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basins, mapReady]);
 
-  // Community report pins — small, so they don't compete with basin markers
+    (events.volcanoes || []).forEach((volcano) => {
+      const el = document.createElement('div');
+      el.className = 'map-volcano';
+      el.textContent = '🌋';
+      el.title = volcano.title;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([volcano.longitude, volcano.latitude])
+        .setPopup(
+          new maplibregl.Popup({ offset: 10, closeButton: false }).setHTML(
+            `<strong>${escapeHtml(volcano.name)}</strong><br/>` +
+              `<span style="color:#6b6558">${escapeHtml(volcano.status)}${
+                volcano.country ? ` · ${escapeHtml(volcano.country)}` : ''
+              }</span>`
+          )
+        )
+        .addTo(mapInstance.current);
+      eventMarkers.current.push(marker);
+    });
+  }, [events, mapReady]);
+
+  // The pin for wherever the user is asking about.
   useEffect(() => {
-    if (!mapInstance.current || !mapReady) return;
-
+    if (!mapInstance.current || !mapReady || !location) return;
     const maplibregl = maplibreRef.current;
     if (!maplibregl) return;
 
-    reportMarkersRef.current.forEach((m) => m.remove());
-    reportMarkersRef.current = [];
+    if (locationMarker.current) locationMarker.current.remove();
 
-    reports.forEach((report) => {
-      const status =
-        REPORT_STATUSES.find((s) => s.value === report.status) || REPORT_STATUSES[0];
+    const el = document.createElement('div');
+    el.className = 'map-you';
+    el.style.background = profile ? RISK_COLORS[profile.overall_risk] : '#23211c';
+    el.title = placeLabel(location);
 
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background: ${status.color};
-        border: 2px solid #ffffff;
-        box-shadow: 0 1px 2px rgba(35,33,28,0.3);
-        cursor: pointer;
-      `;
-      el.title = `${status.label}${report.reporter_name ? ` — ${report.reporter_name}` : ''}`;
+    locationMarker.current = new maplibregl.Marker({ element: el })
+      .setLngLat([location.longitude, location.latitude])
+      .addTo(mapInstance.current);
+  }, [location, profile, mapReady]);
 
-      const photoUrl = resolveAssetUrl(report.photo_url);
-      const popupHtml = `
-        <strong>${status.label}</strong>${
-        report.description
-          ? `<br/><span style="color:#6b6558">${escapeHtml(report.description)}</span>`
-          : ''
-      }${
-        photoUrl
-          ? `<img src="${photoUrl}" alt="Report photo" loading="lazy" style="width:180px;max-height:120px;object-fit:cover;border-radius:6px;margin-top:6px;display:block"/>`
-          : ''
-      }<br/><span style="color:#938c7e;font-size:11px">${
-        report.reporter_name ? `by ${escapeHtml(report.reporter_name)} · ` : ''
-      }${new Date(report.submitted_at).toLocaleString()}</span>`;
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([report.longitude, report.latitude])
-        .setPopup(new maplibregl.Popup({ offset: 12, closeButton: false }).setHTML(popupHtml))
-        .addTo(mapInstance.current);
-
-      reportMarkersRef.current.push(marker);
-    });
-  }, [reports, mapReady]);
-
-  // Role / language change: refresh only the advisory — no map movement.
-  useEffect(() => {
-    if (selectedBasin) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadForecast(selectedBasin);
-    }
-  }, [role, language]);
+  // ── Render ──────────────────────────────────────────────────────────────
 
   if (authLoading) {
     return (
       <div className="loading-container" style={{ minHeight: '100vh' }}>
         <div className="spinner" />
-        <span>Loading Tayari...</span>
+        <span>Loading Tayari…</span>
       </div>
     );
   }
@@ -406,11 +293,11 @@ export default function Dashboard() {
   return (
     <div className="main-content">
       <div className="map-container">
-        <div ref={mapRef} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, width: '100%' }} />
+        <div
+          ref={mapRef}
+          style={{ position: 'absolute', inset: 0, width: '100%' }}
+        />
 
-        {/* Fills the map box immediately so the largest element paints without
-            waiting on WebGL — good for LCP — and holds the spot with no layout
-            shift when the canvas fades in. */}
         {!mapReady && (
           <div className="map-placeholder">
             {deferMap ? (
@@ -423,10 +310,6 @@ export default function Dashboard() {
                   Load map
                 </button>
               </div>
-            ) : error ? (
-              <div className="map-placeholder-inner">
-                <span className="map-placeholder-text">Map unavailable</span>
-              </div>
             ) : (
               <div className="map-placeholder-inner">
                 <div className="spinner" />
@@ -435,199 +318,90 @@ export default function Dashboard() {
             )}
           </div>
         )}
+      </div>
 
-        <div className="basin-list animate-fade-in">
-          {loading && (
-            <div className="basin-card" style={{ cursor: 'default' }}>
+      <div className="hazard-panel animate-fade-in">
+          <LocationBar
+            location={location}
+            onSelect={handleSelectLocation}
+            busy={loading}
+          />
+
+          {!location && !loading && (
+            <div className="hazard-empty">
+              <h1 className="hazard-empty-title">What threatens where you are?</h1>
+              <p className="hazard-empty-text">
+                Tayari checks nine hazards — flooding, earthquakes, tsunami, volcanic activity,
+                storms, heat, wildfire, drought and landslides — against live data from USGS,
+                the Smithsonian Global Volcanism Program, Copernicus and Open-Meteo, then
+                explains what to do about the ones that matter.
+              </p>
+              <p className="hazard-empty-text">
+                Share your location or search for a place to begin.
+              </p>
+            </div>
+          )}
+
+          {loading && !profile && (
+            <div className="loading-container">
               <div className="spinner" />
               <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
-                Loading basins…
+                Checking nine hazards…
               </span>
             </div>
           )}
+
           {error && !loading && (
             <div className="notice notice--error" role="alert">
               {error}
             </div>
           )}
-          {basins.map((basin) => (
-            <div
-              key={basin.id}
-              className={`basin-card ${selectedBasin?.id === basin.id ? 'active' : ''}`}
-              onClick={() => selectBasin(basin)}
-            >
-              <div
-                className="basin-risk-indicator"
-                style={{
-                  background: `${RISK_COLORS[basin.current_risk]}1F`,
-                  color: RISK_COLORS[basin.current_risk],
-                  border: `1.5px solid ${RISK_COLORS[basin.current_risk]}`,
-                }}
-              >
-                {basin.flood_probability != null
-                  ? `${(basin.flood_probability * 100).toFixed(0)}%`
-                  : '—'}
-              </div>
-              <div className="basin-info">
-                <div className="basin-name">{basin.name}</div>
-                <div className="basin-meta">
-                  <span>{basin.country}</span>
-                  <span>·</span>
-                  <span className="basin-discharge">
-                    {basin.current_discharge != null
-                      ? `${basin.current_discharge.toFixed(0)} m³/s`
-                      : '—'}
-                  </span>
-                </div>
-              </div>
-              <span
-                className={`risk-badge risk-badge--${basin.current_risk?.toLowerCase()}`}
-              >
-                {basin.current_risk}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {selectedBasin && (
-        <div className="side-panel">
-          <button
-            className="mobile-back-btn"
-            onClick={() => setSelectedBasin(null)}
-          >
-            ← Back to map
-          </button>
-          {forecastLoading && !forecast ? (
-            <div className="loading-container">
-              <div className="spinner" />
-              <span>Loading forecast…</span>
-            </div>
-          ) : forecast ? (
+          {profile && (
             <>
-              <div>
-                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '20px', fontWeight: 600 }}>
-                  {forecast.basin.name}
-                </h2>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                  {forecast.basin.river} · {forecast.basin.country}
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <div className="card-title">Flood risk</div>
-                  <span
-                    className={`risk-badge risk-badge--${forecast.risk.risk_level.toLowerCase()}`}
-                  >
-                    {forecast.risk.risk_level}
-                  </span>
-                </div>
-                <RiskGauge
-                  probability={forecast.risk.probability}
-                  riskLevel={forecast.risk.risk_level}
-                />
-                <div
-                  style={{
-                    textAlign: 'center',
-                    marginTop: '10px',
-                    fontSize: '13px',
-                    color: 'var(--text-muted)',
-                  }}
+              <div className="hazard-summary">
+                <span
+                  className={`risk-badge risk-badge--${profile.overall_risk.toLowerCase()}`}
                 >
-                  {forecast.risk.threshold_exceedance_days != null
-                    ? `Flood threshold may be crossed in ${forecast.risk.threshold_exceedance_days} day${
-                        forecast.risk.threshold_exceedance_days === 1 ? '' : 's'
-                      }`
-                    : 'No threshold exceedance expected in 7 days'}
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <div className="card-title">River discharge</div>
-                  <span
-                    style={{
-                      fontSize: '12px',
-                      color: 'var(--text-muted)',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
-                    {forecast.basin.current_discharge?.toFixed(1)} m³/s
-                  </span>
-                </div>
-                <ForecastChart discharge={forecast.discharge} />
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <div className="card-title">Impact assessment</div>
-                </div>
-                <ImpactPanel impact={forecast.impact} />
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <div className="card-title">Advisory</div>
-                  {forecastLoading && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Updating…
-                    </span>
-                  )}
-                </div>
-
-                <div className="form-group" style={{ marginBottom: '10px' }}>
-                  <label className="form-label" htmlFor="role-select">
-                    Audience
-                  </label>
-                  <select
-                    id="role-select"
-                    className="form-select"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: '12px' }}>
-                  <label
-                    className="form-label"
-                    style={{ marginBottom: '6px', display: 'block' }}
-                  >
-                    Language
-                  </label>
-                  <div className="lang-selector">
-                    {(selectedBasin?.languages?.length
-                      ? selectedBasin.languages
-                      : ['en']
-                    ).map((code) => (
-                      <button
-                        key={code}
-                        className={`lang-btn ${language === code ? 'active' : ''}`}
-                        onClick={() => setLanguage(code)}
-                      >
-                        {LANGUAGE_LABELS[code] || code}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {forecast.advisory && (
-                  <AdvisoryCard
-                    advisory={forecast.advisory}
-                    basinId={selectedBasin?.id}
-                    role={role}
-                    language={language}
-                  />
+                  {profile.overall_risk}
+                </span>
+                <p className="hazard-summary-headline">{profile.headline}</p>
+                {profile.partial && (
+                  <p className="hazard-summary-note">
+                    One or more data feeds did not respond, so some hazards may be missing.
+                  </p>
                 )}
               </div>
-            </>
-          ) : null}
+
+              <div className="hazard-list">
+                {profile.hazards.map((risk) => (
+                  <HazardCard
+                    key={risk.hazard}
+                    risk={risk}
+                    active={selected?.hazard === risk.hazard}
+                    onSelect={setSelected}
+                  />
+                ))}
+              </div>
+
+              {profile.screened_out.length > 0 && (
+                <p className="hazard-screened">
+                  Not relevant here:{' '}
+                  {profile.screened_out.map((h) => hazardMeta(h).short).join(', ')}. Tayari
+                  checked and found no physical basis for these at this location.
+                </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {selected && profile && (
+        <div className="side-panel">
+          <HazardDetail
+            risk={selected}
+            location={{ ...profile.location, languages: profile.languages }}
+            onClose={() => setSelected(null)}
+          />
         </div>
       )}
     </div>

@@ -13,15 +13,18 @@ export default function OnboardingSplash({ onGuestContinue }) {
         </button>
         <div className="onboarding-header">
           <h1 className="onboarding-title">Welcome to Tayari</h1>
-          <p className="onboarding-subtitle">Flood Early Warning & Early Action System</p>
+          <p className="onboarding-subtitle">Multi-Hazard Early Warning & Early Action</p>
         </div>
-        
+
         <div className="onboarding-body">
           <p>
-            Tayari provides community-driven flood advisories and impact assessments for river basins.
+            Tell Tayari where you are and it checks nine hazards against live data — flooding,
+            earthquakes, tsunami, volcanic activity, storms, heat, wildfire, drought and
+            landslides — then explains what to do about the ones that matter.
           </p>
           <p>
-            Sign in to receive personalized alerts and keep a persistent memory of your flood advisory inquiries across devices.
+            Sign in to receive alerts and keep your places and advisory history across devices,
+            or continue as a guest.
           </p>
         </div>
 
