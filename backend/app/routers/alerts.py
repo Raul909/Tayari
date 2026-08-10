@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.limiter import limiter
 
-from app.db import get_session
+from app.db import get_optional_session, get_session
 from app.models.db_models import AdviceORM, AlertORM, ReportORM, UserProfileORM
 from app.models.hazards import HazardAlertRequest, alert_subject
 from app.models.schemas import (
@@ -273,7 +273,7 @@ async def send_hazard_alert(
     request: Request,
     alert_req: HazardAlertRequest,
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_session),
+    session: Optional[AsyncSession] = Depends(get_optional_session),
     user: Optional[UserProfileORM] = Depends(get_optional_user),
 ):
     """
@@ -286,6 +286,13 @@ async def send_hazard_alert(
     Carries the same two protections: a five-minute per-phone cooldown so one
     number cannot be alerted repeatedly, and a twelve-hour duplicate guard per
     subject so a hazard is not re-sent to a community that already heard it.
+
+    The warning still goes out when the database is down. The duplicate guard
+    and the history record both live there, and both are worth having — but
+    neither is worth withholding a warning over, and refusing to send one
+    because an analytics store is paused is the wrong failure. The per-phone
+    cooldown is in memory and keeps working regardless, so the worst case is a
+    repeat after twelve hours rather than an unbounded resend.
     """
     now = time.time()
     rate_limited = [
@@ -306,62 +313,86 @@ async def send_hazard_alert(
         )
 
     subject = alert_subject(alert_req.hazard, alert_req.latitude, alert_req.longitude)
+    pending_id: Optional[int] = None
+    degraded = session is None
 
-    async with _get_alert_lock(subject):
-        stmt = (
-            select(AlertORM)
-            .where(
-                AlertORM.basin_id == subject,
-                AlertORM.risk_level.in_(["HIGH", "EXTREME", "PENDING"]),
+    if session is not None:
+        async with _get_alert_lock(subject):
+            stmt = (
+                select(AlertORM)
+                .where(
+                    AlertORM.basin_id == subject,
+                    AlertORM.risk_level.in_(["HIGH", "EXTREME", "PENDING"]),
+                )
+                .order_by(AlertORM.id.desc())
+                .limit(1)
             )
-            .order_by(AlertORM.id.desc())
-            .limit(1)
-        )
-        recent = (await session.scalars(stmt)).first()
-        if recent:
-            if recent.risk_level == "PENDING":
-                return AlertResponse(
-                    success=True,
-                    message="Alert skipped: a send for this hazard and place is already in progress.",
-                    sms_count=0,
-                )
-            elapsed = datetime.now(recent.sent_at.tzinfo) - recent.sent_at
-            if elapsed.total_seconds() < 12 * 3600:
-                return AlertResponse(
-                    success=True,
-                    message=(
-                        "Alert skipped: an alert for this hazard and place was already "
-                        "sent within the last 12 hours."
-                    ),
-                    sms_count=0,
-                )
+            try:
+                recent = (await session.scalars(stmt)).first()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Duplicate check unavailable ({e}); sending anyway")
+                recent, degraded = None, True
 
+            if recent:
+                if recent.risk_level == "PENDING":
+                    return AlertResponse(
+                        success=True,
+                        message="Alert skipped: a send for this hazard and place is already in progress.",
+                        sms_count=0,
+                    )
+                elapsed = datetime.now(recent.sent_at.tzinfo) - recent.sent_at
+                if elapsed.total_seconds() < 12 * 3600:
+                    return AlertResponse(
+                        success=True,
+                        message=(
+                            "Alert skipped: an alert for this hazard and place was already "
+                            "sent within the last 12 hours."
+                        ),
+                        sms_count=0,
+                    )
+
+            for phone in alert_req.phone_numbers:
+                _phone_send_history[phone] = now
+
+            if not degraded:
+                try:
+                    pending = AlertORM(
+                        basin_id=subject,
+                        risk_level="PENDING",
+                        role=alert_req.role.value,
+                        language=alert_req.language.value,
+                        recipients_count=len(alert_req.phone_numbers),
+                        advisory_text="",
+                    )
+                    session.add(pending)
+                    await session.commit()
+                    await session.refresh(pending)
+                    pending_id = pending.id
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Could not reserve an alert record ({e}); sending anyway")
+                    degraded = True
+    else:
         for phone in alert_req.phone_numbers:
             _phone_send_history[phone] = now
 
-        pending = AlertORM(
-            basin_id=subject,
-            risk_level="PENDING",
-            role=alert_req.role.value,
-            language=alert_req.language.value,
-            recipients_count=len(alert_req.phone_numbers),
-            advisory_text="",
-        )
-        session.add(pending)
-        await session.commit()
-        await session.refresh(pending)
-
     background_tasks.add_task(
-        _process_and_send_hazard_alert, alert_req=alert_req, alert_row_id=pending.id
+        _process_and_send_hazard_alert, alert_req=alert_req, alert_row_id=pending_id
     )
     return AlertResponse(
         success=True,
-        message="Alert processing queued successfully.",
+        message=(
+            "Alert queued. The database is unavailable, so this send is not recorded and "
+            "the 12-hour duplicate guard is not active for it."
+            if degraded
+            else "Alert processing queued successfully."
+        ),
         sms_count=len(alert_req.phone_numbers),
     )
 
 
-async def _process_and_send_hazard_alert(alert_req: HazardAlertRequest, alert_row_id: int):
+async def _process_and_send_hazard_alert(
+    alert_req: HazardAlertRequest, alert_row_id: Optional[int]
+):
     """Assess the location, write the advisory, send it, and resolve the record."""
     from app.db import SessionLocal
     from app.hazards.advisory import generate_hazard_advisory, sms_text as build_sms
@@ -385,24 +416,34 @@ async def _process_and_send_hazard_alert(alert_req: HazardAlertRequest, alert_ro
             risk=risk, location=profile.location, role=alert_req.role, language=alert_req.language
         )
         text = build_sms(advisory)
+        # Delivery first. Everything below is bookkeeping, and bookkeeping must
+        # never be able to stop a warning that has already been written.
         await send_sms_alert(text, alert_req.phone_numbers)
 
-        async with SessionLocal() as session:
-            row = await session.get(AlertORM, alert_row_id)
-            if row is not None:
-                row.risk_level = risk.risk_level.value
-                row.advisory_text = text
-                await session.commit()
+        if alert_row_id is not None:
+            try:
+                async with SessionLocal() as session:
+                    row = await session.get(AlertORM, alert_row_id)
+                    if row is not None:
+                        row.risk_level = risk.risk_level.value
+                        row.advisory_text = text
+                        await session.commit()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Alert #{alert_row_id} sent but not recorded: {e}")
 
     except Exception as e:  # noqa: BLE001
         logger.error(f"Failed to process hazard alert #{alert_row_id}: {e}")
         # Drop the reservation so a failed send does not block this subject for
         # the next twelve hours.
-        async with SessionLocal() as session:
-            row = await session.get(AlertORM, alert_row_id)
-            if row is not None and row.risk_level == "PENDING":
-                await session.delete(row)
-                await session.commit()
+        if alert_row_id is not None:
+            try:
+                async with SessionLocal() as session:
+                    row = await session.get(AlertORM, alert_row_id)
+                    if row is not None and row.risk_level == "PENDING":
+                        await session.delete(row)
+                        await session.commit()
+            except Exception:  # noqa: BLE001
+                logger.warning(f"Could not clear the reservation for alert #{alert_row_id}")
 
 
 @router.get("/alerts/history", response_model=list[AlertRecord])

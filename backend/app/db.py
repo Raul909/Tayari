@@ -16,7 +16,7 @@ versa — that is what "one database for both apps" means here.
 
 import asyncio
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession, async_sessionmaker, create_async_engine,
@@ -96,6 +96,30 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields a database session per request."""
     async with SessionLocal() as session:
         yield session
+
+
+async def get_optional_session() -> AsyncGenerator[Optional[AsyncSession], None]:
+    """
+    Yield a session, or None when the database cannot be reached.
+
+    For endpoints whose real job does not need the database. Sending a warning
+    to a phone is the clearest case: the database records that it happened and
+    stops it being sent twice — both worth having, neither worth withholding a
+    warning over. With Supabase paused, every alert request came back "Server
+    busy" and no SMS went out, which is an early-warning system silenced by its
+    own analytics store.
+
+    Callers must handle None and say so in their response rather than quietly
+    dropping the bookkeeping.
+    """
+    try:
+        async with SessionLocal() as session:
+            yield session
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"Database unavailable; continuing without it ({type(e).__name__}: {e})"
+        )
+        yield None
 
 
 async def init_db() -> None:

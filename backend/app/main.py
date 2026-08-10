@@ -80,20 +80,44 @@ from starlette.responses import JSONResponse
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Concurrency limiter — cap active requests at 100 with a 30s timeout per request
+# Concurrency limiter — cap active requests, with a per-request ceiling.
+# 45s rather than 30: a cold hazard profile makes seven upstream calls, and on
+# a Render free-tier cold start those were being cut off mid-flight.
 _semaphore = asyncio.Semaphore(100)
+REQUEST_TIMEOUT_SECONDS = 45
 
 class ConcurrencyLimitMiddleware(BaseHTTPMiddleware):
+    """
+    Caps concurrent requests and bounds how long any one may run.
+
+    It deliberately does NOT flatten application errors into "Server busy".
+    It used to: every unhandled exception — a bug, a missing key, a paused
+    database — came back as a 503 saying the server was busy, logged as a
+    one-line str(e) with no traceback. The server was not busy, and the one
+    message that would have identified the problem was the one being thrown
+    away; an afternoon of alert failures read as capacity trouble.
+
+    Capacity problems get 504/503 because that is what they are. Everything
+    else is re-raised so FastAPI returns a real 500 and the traceback reaches
+    the log.
+    """
+
     async def dispatch(self, request: Request, call_next):
         try:
-            async with asyncio.timeout(30):
+            async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
                 async with _semaphore:
                     return await call_next(request)
         except asyncio.TimeoutError:
+            logger.warning(
+                f"Request timed out after {REQUEST_TIMEOUT_SECONDS}s: "
+                f"{request.method} {request.url.path}"
+            )
             return JSONResponse({"detail": "Request timeout"}, status_code=504)
-        except Exception as e:
-            logger.error(f"Middleware execution error: {e}")
-            return JSONResponse({"detail": "Server busy"}, status_code=503)
+        except Exception:
+            logger.exception(
+                f"Unhandled error handling {request.method} {request.url.path}"
+            )
+            raise
 
 app.add_middleware(ConcurrencyLimitMiddleware)
 
