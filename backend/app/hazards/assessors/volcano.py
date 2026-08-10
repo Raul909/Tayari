@@ -72,6 +72,9 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         return None
 
     # ── Live: is any of them in this week's activity report? ─────────────────
+    # When the feed is unavailable we must not imply the volcano is quiet — that
+    # is the one claim this card is least entitled to make on missing data.
+    activity_unavailable = "volcano_activity" in ctx.failed_feeds
     active: list[tuple[NearbyVolcano, object]] = []
     for _, nv in scored:
         for report in ctx.volcano_activity:
@@ -113,6 +116,14 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
                     detail=rep.status,
                 )
             )
+    elif activity_unavailable:
+        headline = f"{closest.volcano.name} is {closest.distance_km:.0f} km away — activity feed unavailable"
+        summary = (
+            f"{closest.volcano.name} is the nearest volcano. The Smithsonian/USGS weekly "
+            f"activity report could not be reached, so Tayari cannot say whether it is "
+            f"currently in unrest. Check volcano.si.edu or your national volcano observatory "
+            f"directly."
+        )
     else:
         last = closest.volcano.last_eruption_year
         when = (
@@ -164,8 +175,9 @@ def assess(ctx: HazardContext) -> Optional[HazardRisk]:
         summary=summary,
         indicators=indicators,
         events=events,
-        confidence=0.75 if active else 0.6,
+        confidence=0.75 if active else (0.3 if activity_unavailable else 0.6),
         event_driven=bool(active),
+        degraded=activity_unavailable,
         note=(
             "Weekly activity reporting covers volcanoes with observatory coverage; a quiet "
             "entry here is not a guarantee of no unrest at an unmonitored volcano."

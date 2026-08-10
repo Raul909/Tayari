@@ -714,7 +714,7 @@ _DESC_RE = re.compile(r"<description>(.*?)</description>", re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-async def fetch_volcano_activity() -> list[VolcanoActivity]:
+async def fetch_volcano_activity() -> Optional[list[VolcanoActivity]]:
     """
     Volcanoes in the current Smithsonian/USGS Weekly Volcanic Activity Report.
 
@@ -723,6 +723,13 @@ async def fetch_volcano_activity() -> list[VolcanoActivity]:
     on the report's own coordinates, not on its name — report titles carry
     inconsistent diacritics and local spellings, and a name mismatch on a
     volcano hazard is not an acceptable failure mode.
+
+    Returns `None` when the feed could not be read, and an empty list only when
+    the report genuinely lists nothing. The distinction is not pedantry: an
+    earlier version returned `[]` for both, so one failed fetch was
+    indistinguishable from "no volcano on Earth is erupting this week" — and,
+    cached for three hours, it told Yogyakarta that Merapi was quiet while
+    Merapi was erupting 30 km away. A failure must never be cached as an answer.
     """
     cached = _volcano_activity_cache.get("weekly")
     if cached is not None:
@@ -730,12 +737,18 @@ async def fetch_volcano_activity() -> list[VolcanoActivity]:
 
     client = await get_client()
     try:
-        resp = await client.get(GVP_WEEKLY_RSS)
+        resp = await client.get(GVP_WEEKLY_RSS, timeout=40.0)
         resp.raise_for_status()
         xml = resp.content.decode("latin-1", errors="replace")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"GVP weekly activity feed failed: {e}")
-        return []
+        return None
+
+    if "<rss" not in xml and "<item>" not in xml:
+        # A 200 carrying something that is not the report — a proxy error page,
+        # a captive portal. An empty week and a wrong body are not the same fact.
+        logger.warning("GVP weekly feed returned a non-RSS body; treating as unavailable")
+        return None
 
     activity: list[VolcanoActivity] = []
     for raw in _ITEM_RE.findall(xml):

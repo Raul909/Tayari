@@ -180,7 +180,7 @@ async def global_events(min_magnitude: float = 4.5, days: int = 7) -> dict:
     activity = await feeds.fetch_volcano_activity()
 
     eruptions = []
-    for report in activity:
+    for report in activity or []:
         matched = volcano_catalog.match_volcano(report.latitude, report.longitude)
         eruptions.append(
             {
@@ -199,6 +199,9 @@ async def global_events(min_magnitude: float = 4.5, days: int = 7) -> dict:
     return {
         "earthquakes": [q.model_dump(mode="json") for q in quakes],
         "volcanoes": eruptions,
+        # Distinguishes "nothing is erupting" from "we could not find out",
+        # so a client never renders an unread feed as an empty world.
+        "unavailable": [] if activity is not None else ["volcanoes"],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "sources": [
             "USGS Earthquake Hazards Program",
