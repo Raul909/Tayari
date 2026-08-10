@@ -19,7 +19,9 @@ The data existed. The warning never arrived.
 
 Highly technical meteorological data stays trapped in dashboards, in English, written for scientists. The family on the riverbank, the teacher deciding whether to close the school, the clinic worker moving medicine to higher ground — they never see it, or can't act on it.
 
-**Tayari** (Swahili for *Ready*) exists to close that gap between **information generated** and **information acted upon**. It doesn't just predict floods — it translates forecasts into plain-language, role-specific advisories in the languages people actually speak, and delivers them to the phones people actually carry.
+**Tayari** (Swahili for *Ready*) exists to close that gap between **information generated** and **information acted upon**. It translates forecasts into plain-language, role-specific advisories in the languages people actually speak, and delivers them to the phones people actually carry.
+
+That gap is not specific to floods, and it is not specific to one region. The same pattern — the data existed, the warning never arrived — describes the 2004 Indian Ocean tsunami, every heatwave that kills people indoors and alone, and every drought that becomes a famine while the rainfall figures sit in a bulletin. So Tayari now assesses **nine hazards anywhere on Earth**: give it a location and it answers what threatens you here, and what to do about it.
 
 Tayari is **free to use** and open source, because an early warning should never be behind a paywall:
 
@@ -28,12 +30,35 @@ Tayari is **free to use** and open source, because an early warning should never
 
 ## ✨ What it does
 
-- 🔮 **Predicts** river flooding 1–7 days ahead using a LightGBM model (with a calibrated heuristic fallback) on Open-Meteo's GloFAS river discharge and rainfall forecasts.
-- 🌍 **Overlays** impact data, estimating the population and critical infrastructure (schools, clinics, roads) at risk in each basin.
-- 🗣️ **Translates** technical jargon into role-specific advisories (including for teachers, students, farmers, and pastoralists) in **English, Somali, Swahili, Amharic, and Oromo** using an LLM — with pre-written template fallbacks so warnings go out even if the AI is down.
-- 📱 **Delivers** alerts via the Twilio SMS gateway, a fast Next.js PWA dashboard for coordinators, and a Flutter mobile app for the field.
-- 📸 **Listens** — community members submit geotagged photo reports of ground conditions, and coordinators or neighbours respond with advice threads (safe routes, closed bridges, who to contact) that everyone can see, closing the loop between forecast and reality.
-- 🔐 **Secure Authentication** with a seamless, end-to-end user experience, including a comprehensive "Forgot Password" flow following modern UX industry standards.
+- 🌍 **Assesses nine hazards at any coordinate on Earth** — flood, earthquake, tsunami, volcanic activity, cyclone & severe storm, extreme heat, wildfire weather, drought and landslide — from live public feeds, with no API keys anywhere in the chain.
+- 🔮 **Predicts** river flooding 1–7 days ahead with a calibrated multi-factor model on Copernicus GloFAS discharge and rainfall forecasts.
+- 🧭 **Screens out what cannot happen.** A landlocked town gets no tsunami card at all. Hiding the impossible is what keeps the possible legible.
+- 🗣️ **Translates** technical data into role-specific advisories (farmers, pastoralists, teachers, county officers) in **English, Somali, Swahili, Amharic, Oromo, Arabic and more** — with human-written template fallbacks so warnings still go out when the AI is down.
+- 📱 **Delivers** via Twilio SMS, a Next.js PWA dashboard, and an offline-first Flutter app.
+- 📸 **Listens** — community members submit geotagged photo reports, and coordinators or neighbours reply with advice threads that everyone can see.
+- 🔐 **Secure authentication** with a full password-reset flow.
+
+### The two numbers on every hazard
+
+Each hazard carries **susceptibility** (can this happen here at all?) and **score** (is it happening now?), deliberately kept apart.
+
+Collapsing them was tempting and wrong. A coastal city's tsunami susceptibility is permanently high; rendering that as a permanently high *risk* is precisely the alarm fatigue that gets the one real warning ignored. So an exposed-but-quiet place reads *"Exposed area, quiet right now"* — and only rises when something actually happens.
+
+### Hazards, and where the numbers come from
+
+| Hazard | Warning time | Source |
+|---|---|---|
+| **River flooding** | 1–7 days | Copernicus GloFAS v4 discharge · Open-Meteo rainfall |
+| **Earthquake** | *None — no forecast is possible* | USGS FDSN event catalog |
+| **Tsunami** | Minutes after a rupture | USGS FDSN · Copernicus DEM coastal geometry |
+| **Volcanic activity** | Hours to weeks | Smithsonian GVP catalog · Smithsonian/USGS Weekly Activity Report |
+| **Cyclone & severe storm** | 1–5 days | Open-Meteo wind, gusts, rainfall |
+| **Extreme heat** | 2–7 days | Open-Meteo forecast vs. 5-year local climatology |
+| **Wildfire weather** | 1–5 days | Chandler Burning Index · antecedent dryness |
+| **Drought** | Weeks to months | Open-Meteo 90-day rainfall percentile |
+| **Landslide** | Hours | DEM terrain relief · antecedent and forecast rain |
+
+Two honesty constraints run through all of it. **Earthquakes are never presented as forecastable** — that card carries a readiness floor capped below HIGH and rises only in response to ruptures that have already happened. And **thresholds are local, never absolute**: 38 °C is an ordinary afternoon in Khartoum and a mass-casualty event in Glasgow, so heat, drought and fire are all scored against each location's own five-year climatology.
 
 ---
 
@@ -43,49 +68,53 @@ Tayari is built on a decoupled, service-oriented architecture:
 
 ```mermaid
 graph TD
-    subgraph Data Ingestion
-        A[Open-Meteo Flood API<br/>GloFAS River Discharge] -->|Cloudflare Worker proxy| B[FastAPI Backend<br/>hosted on Render]
-        A2[Open-Meteo Weather API<br/>Rainfall Forecasts] -->|Cloudflare Worker proxy| B
+    subgraph Feeds["Live feeds — all public, all keyless"]
+        F1[USGS FDSN<br/>seismicity + live quakes]
+        F2[Smithsonian GVP<br/>volcano catalog + weekly activity]
+        F3[Copernicus GloFAS<br/>river discharge]
+        F4[Open-Meteo<br/>forecast · 5y reanalysis · elevation]
     end
 
-    subgraph ML Pipeline
-        B --> C[Flood Risk Model<br/>LightGBM + calibrated heuristic fallback]
-        C --> D[Risk Score<br/>0-100% per basin, 7-day horizon]
+    F1 & F2 & F3 & F4 --> CTX[Hazard Context<br/>one concurrent gather, tiered cache]
+
+    subgraph Engine["Assessment — 9 pure functions over one context"]
+        CTX --> A1[Earthquake] & A2[Tsunami] & A3[Volcano]
+        CTX --> A4[Flood] & A5[Storm] & A6[Landslide]
+        CTX --> A7[Wildfire] & A8[Heat] & A9[Drought]
+        A1 & A2 & A3 & A4 & A5 & A6 & A7 & A8 & A9 --> RANK[Screen · score · rank by urgency]
     end
 
-    subgraph Impact Analysis
-        D --> E[Impact Engine]
-        F[Pre-computed WorldPop<br/>population estimates] --> E
-        G[OSM-derived Infrastructure<br/>Schools/Clinics/Roads] --> E
-        E --> H[Impact Report<br/>People + Assets at Risk]
+    RANK --> API[FastAPI on Render<br/>/api/hazards?lat&lon]
+
+    subgraph Advisory["What to do"]
+        API --> LLM[Groq · Llama 3.3 70B<br/>generate → translate → leak-check]
+        LLM -.->|model unavailable| TPL[Human-written safety actions<br/>per hazard, per role]
     end
 
-    subgraph AI Advisory
-        H --> I[Groq API<br/>Llama 3.3 70B]
-        I --> J[Role-specific advisories<br/>English, Somali, Swahili, Amharic, Oromo]
-        I -.->|if API unavailable| T[Template Fallback<br/>English, Somali, Swahili]
-    end
+    LLM & TPL --> WEB[Next.js PWA<br/>tayari.pages.dev]
+    LLM & TPL --> SMS[Twilio SMS]
+    LLM & TPL --> APP[Flutter app<br/>offline-first]
 
-    subgraph Alert Delivery
-        J --> K[Next.js PWA Dashboard<br/>tayari.pages.dev]
-        J --> L[Twilio<br/>SMS Gateway]
-        J --> M[Flutter Mobile App<br/>offline-first, APK on GitHub Releases]
-    end
-
-    subgraph Feedback Loop
-        M -->|Geotagged Photo Reports| B
-        K -->|Advice threads on reports| B
-        B -->|Reports · Advice · Alert log| DB[(Supabase Postgres<br/>durable shared store)]
-    end
+    APP -->|Geotagged photo reports| API
+    WEB -->|Advice threads| API
+    API --> DB[(Supabase Postgres)]
 ```
+
+**Nine hazards cost seven upstream calls, not sixty-three.** Most of them are different questions asked of the same observations — the rainfall driving a flood also drives a landslide and, by its absence, a drought — so the context is gathered once, concurrently, and every assessor reads from it. Caching is tiered by how fast each truth moves: seismic history for a day, live earthquakes for three minutes.
+
+**One dead feed costs one card, never the page.** Assessors are pure functions that return `None` when a hazard is not physically relevant, and a failing feed degrades its own hazards in isolation.
+
+**No bundled geodata.** Coastal distance and slope come from sampling a digital elevation model at 37 points around the location in a single request — a sample at or below sea level is ocean. A coastline shapefile would have been hundreds of megabytes on a 512 MB container.
 
 Community reports, their advice threads, and sent-alert history are persisted to **Supabase (managed Postgres)** through the backend. Both the web dashboard and the mobile app write and read through the same API, so a report filed from a phone in the field shows up on a coordinator's dashboard — and vice versa — backed by one shared database. Supabase also handles user authentication (sign-up, login, and password reset). Locally the database falls back to SQLite so you can run everything with zero setup.
 
 A small **Cloudflare Worker** does double duty: it proxies Open-Meteo requests (avoiding upstream rate limits) and pings the Render backend on a cron schedule so free-tier cold starts never delay a warning.
 
-## 📍 Target Basins
+## 📍 Calibrated Flood Basins
 
-Alongside worldwide location lookup, Tayari keeps **eight** river basins under continuous, individually calibrated watch — chosen because each has a documented history of destructive flooding and vulnerable riverside communities:
+Tayari assesses hazards **anywhere on Earth**, but its flood thresholds outside these eight basins are derived from each river's own five-year record — bankfull estimated as the median annual peak. Serviceable, and weaker than calibration.
+
+These eight are calibrated properly: thresholds tuned against documented historical floods and scored by true skill statistic. They live at `/basins` and are the better answer where they apply.
 
 | Basin | River | Country | Gauge (Town) | Historical Context |
 |-------|-------|---------|--------------|--------------------|
@@ -100,7 +129,7 @@ Alongside worldwide location lookup, Tayari keeps **eight** river basins under c
 
 *Adding a basin is a pure data change (`backend/app/data/basins.json`) — gauge/upstream points, discharge thresholds, impact figures and local infrastructure — so the coverage grid extends to new rivers without touching the model or UI.*
 
-*Note: While the current implementation focuses solely on floods to ensure depth and quality, the architecture is designed to be easily extensible for other regional hazards like drought and locust swarms.*
+*Adding a **hazard** is one module in `backend/app/hazards/assessors/` exposing `assess(ctx) -> HazardRisk | None`, plus an entry in the registry and a set of safety actions. The context, caching, ranking, advisory generation and UI are all hazard-agnostic.*
 
 ---
 
@@ -154,19 +183,30 @@ flutter run
 I chose tools that are fast, reliable, and perfectly suited for a machine-learning-driven web app:
 
 - **Backend:** FastAPI (Python) — *Blazing fast, async-first, and natively speaks ML.*
-- **Frontend (Web):** Next.js 14 (App Router) & Vanilla CSS — *SSR for performance, PWA ready, and a custom glassmorphism design system.*
+- **Frontend (Web):** Next.js 16 (App Router, static export) & vanilla CSS — *PWA-ready, statically exported to Cloudflare's edge, on a calm paper-toned design system.*
 - **Frontend (Mobile):** Flutter & Riverpod — *Native ARM performance, rendering vector maps instantly.*
 - **Databases:** Supabase (managed Postgres) for the shared backend store & auth, and Isar — *ultra-fast offline-first NoSQL caching for the mobile app.*
-- **ML Model:** LightGBM — *Fast training on tabular data without needing a GPU, backed by a calibrated heuristic so predictions never go dark.*
+- **Hazard engine:** Pure-Python scoring over live feeds — *a calibrated multi-factor flood model, USGS seismicity statistics, Chandler Burning Index, rainfall percentiles against local climatology. Transparent, explainable, no model artifact to ship, and every number traceable to a public source.*
 - **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
-- **AI & Comms:** Groq API (Llama 3.3 70B) & Twilio — *Best-in-class multilingual text generation and reliable SMS delivery.*
+- **Data feeds:** USGS FDSN, Smithsonian Global Volcanism Program, Copernicus GloFAS & DEM, Open-Meteo — *all public, all keyless, no vendor lock-in on the thing that matters most.*
+- **AI & Comms:** Groq API (Llama 3.3 70B) & Twilio — *Multilingual generation with a translation-quality guard, and reliable SMS delivery.*
 - **Hosting:** Cloudflare Pages (web, free at [tayari.pages.dev](https://tayari.pages.dev)), Render (API), and a Cloudflare Worker for proxying + keep-alive.
 
 ---
 
-## 🎯 The Hindcast Demo (Nov 2023)
+## 🎯 Try it
 
-One of the coolest features to check out is the historical hindcast. If you query the historical data for the Shabelle basin around October-November 2023, you can watch the model predict the devastating Beledweyne floods days before they happened. It's a powerful validation of the system's potential to save lives.
+**The hindcast.** Query the historical data for the Shabelle basin around October–November 2023 and watch the model predict the devastating Beledweyne floods days before they happened.
+
+**The multi-hazard view.** A few locations that show what the engine actually distinguishes:
+
+| Search for | What you should see |
+|---|---|
+| **Yogyakarta, Indonesia** | Volcanic activity leading, because Merapi is 30 km away and in the current Smithsonian/USGS weekly report |
+| **Kathmandu, Nepal** | Earthquake at MODERATE — the readiness floor, with 314 M4.5+ events within 250 km since 1970 and an M8 in 1934. Never a prediction. |
+| **Phoenix, Arizona** | Wildfire weather and drought together; heat sits LOW because 44 °C is normal there in August |
+| **Chennai, India** | A tsunami card on an aseismic coast — because the source that matters is 1,500 km away, which is exactly what happened in 2004 |
+| **Reykjavík, Iceland** | No tsunami card. Coastal and low, but the Mid-Atlantic Ridge does not produce the great ruptures that make far-field waves. |
 
 ---
 
@@ -183,7 +223,8 @@ Ideas we're actively thinking about, roughly in order of how many people they'd 
 | **Satellite verification** | Cross-check community reports and forecasts against Sentinel-1 radar flood extent, so coordinators can separate rumor from reality. |
 | **Anticipatory cash triggers** | Link HIGH-risk forecasts to humanitarian cash-transfer programs, so families can act *before* the water arrives, not after. |
 | **Household registry** | Let community leaders register vulnerable households (elderly, disabled, pregnant) per basin so evacuations start with those who need the most time. |
-| **Drought & locust modules** | The basin-config architecture already supports new hazards — same pipeline, different data feeds. |
+| **Satellite fire detection** | NASA FIRMS thermal hot-spots would turn the wildfire card from fire *weather* into fire *detection* — it needs an API key, which is the only reason it is not in yet. |
+| **Named cyclone tracking** | The storm card scores forecast wind and rain, not storm tracks. A free global track feed would add landfall timing. |
 | **Low-cost river gauges** | Solar LoRa water-level sensors at bridges would give ground truth between GloFAS grid points and sharpen the model. |
 | **Printable sitreps** | One-click PDF situation reports for county officers to brief governors and share with responders who work offline. |
 
