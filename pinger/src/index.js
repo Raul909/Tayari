@@ -47,20 +47,36 @@ export default {
     for (const [prefix, upstream] of Object.entries(PROXY_ROUTES)) {
       if (url.pathname.startsWith(prefix)) {
         try {
+          // volcano.si.edu sits behind bot protection that answers a bare
+          // datacenter request with a 46 KB HTML interstitial and an HTTP 200.
+          // A plausible browser header set is what gets the actual file.
+          const requestHeaders =
+            prefix === "/gvp"
+              ? {
+                  "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                  Accept:
+                    "application/rss+xml,application/xml;q=0.9,text/xml;q=0.8,*/*;q=0.7",
+                  "Accept-Language": "en-US,en;q=0.9",
+                  Referer: "https://volcano.si.edu/",
+                }
+              : { "User-Agent": "Tayari CF Worker" };
+
           const resp = await fetch(upstream + url.search, {
-            headers: { "User-Agent": "Tayari CF Worker" },
+            headers: requestHeaders,
             // The reanalysis archive can take a while for a five-year window.
             signal: AbortSignal.timeout(50000),
           });
-          const headers = new Headers();
-          headers.set(
+          const responseHeaders = new Headers();
+          responseHeaders.set(
             "Content-Type",
             resp.headers.get("Content-Type") || "application/json"
           );
           // Cached at the edge so repeated lookups for the same place cost the
           // upstream nothing. Short, because the forecast half moves hourly.
-          headers.set("Cache-Control", "public, max-age=600");
-          return new Response(resp.body, { status: resp.status, headers });
+          responseHeaders.set("Cache-Control", "public, max-age=600");
+          return new Response(resp.body, { status: resp.status, headers: responseHeaders });
         } catch (error) {
           return new Response(
             JSON.stringify({ error: `Upstream fetch failed: ${error.message || error}` }),

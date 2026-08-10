@@ -279,6 +279,17 @@ async def health_feeds():
         ),
         "volcanoes (Smithsonian GVP)": (hz.GVP_WEEKLY_SOURCES[0], {}),
         "volcanoes direct (Smithsonian GVP)": (hz.GVP_WEEKLY_SOURCES[1], {}),
+        "volcano catalog (GVP GeoServer)": (
+            "https://webservices.volcano.si.edu/geoserver/GVP-VOTW/ows",
+            {
+                "service": "WFS",
+                "version": "2.0.0",
+                "request": "GetFeature",
+                "typeName": "GVP-VOTW:Smithsonian_VOTW_Holocene_Eruptions",
+                "outputFormat": "application/json",
+                "count": 1,
+            },
+        ),
     }
 
     async def probe(name: str, url: str, params: dict) -> dict:
