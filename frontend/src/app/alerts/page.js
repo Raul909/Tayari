@@ -1,171 +1,150 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { sendAlert, fetchAlertHistory, fetchAdvisory, fetchBasins, resolveAssetUrl } from '@/lib/api';
-import { ROLES, LANGUAGES, LANGUAGE_LABELS } from '@/lib/constants';
-import { useToast } from '@/components/Toast';
-import { getSupabase } from '@/lib/supabase';
-import { useAuth } from '@/lib/auth';
+import { useEffect, useRef, useState } from 'react';
+import LocationBar from '@/components/LocationBar';
 import AuthModal from '@/components/AuthModal';
+import { useToast } from '@/components/Toast';
+import { useAuth } from '@/lib/auth';
+import { getSupabase } from '@/lib/supabase';
+import { fetchAlertHistory } from '@/lib/api';
+import { LANGUAGE_LABELS, ROLES } from '@/lib/constants';
+import {
+  fetchHazardAdvisory,
+  fetchHazardProfile,
+  fetchHazardTypes,
+  hazardMeta,
+  loadLocation,
+  placeLabel,
+  reverseGeocode,
+  saveLocation,
+  sendHazardAlert,
+} from '@/lib/hazards';
 
+// Loose E.164 check (+ then 8-15 digits) — enough to catch a typo or a pasted
+// wrong thing before it reaches Twilio and costs a message.
+const PHONE_RE = /^\+[1-9]\d{7,14}$/;
+
+/**
+ * Sending an advisory to a phone.
+ *
+ * Reordered around the question people actually arrive with. This page used to
+ * open with a dropdown of eight river basins, which meant the only alert you
+ * could send was a flood alert, and only for one of eight rivers. The flow is
+ * now hazard first, then place: pick what you are worried about, pick where,
+ * and Tayari works out whether that hazard is even relevant there.
+ */
 export default function AlertsPage() {
   const { user, loading: authLoading, logout } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showSignInBanner, setShowSignInBanner] = useState(true);
 
-  const [basinsData, setBasinsData] = useState([]);
-  const [basinId, setBasinId] = useState('');
-  const [role, setRole] = useState('farmer');
+  const [catalog, setCatalog] = useState([]);
+  const [hazard, setHazard] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  const [role, setRole] = useState('general');
   const [language, setLanguage] = useState('en');
-  const [phoneNumber, setPhoneNumber] = useState('+2521234567');
-  
-  const [smsPreview, setSmsPreview] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+
+  const [preview, setPreview] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState(false);
-  
-  // Audio state
-  const [requiresRecording, setRequiresRecording] = useState(false);
-  const [voiceNoteUrl, setVoiceNoteUrl] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  // Tracks the current locally-created blob: URL (from a manual recording) so
-  // it can be revoked the moment it's superseded, instead of pinning the audio
-  // in memory for the rest of the tab's life.
-  const localVoiceUrlRef = useRef(null);
-  // Monotonic token so a slow preview response can't overwrite a newer basin/
-  // role/language selection with stale SMS text.
-  const previewReqId = useRef(0);
+  const [previewError, setPreviewError] = useState(null);
 
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState([]);
 
   const { notify } = useToast();
+  const profileReq = useRef(0);
+  const previewReq = useRef(0);
 
+  // ── Catalog, saved location, history ────────────────────────────────────
   useEffect(() => {
-    loadBasins();
-    loadHistory();
-    return () => {
-      if (localVoiceUrlRef.current) {
-        URL.revokeObjectURL(localVoiceUrlRef.current);
-      }
-    };
+    fetchHazardTypes()
+      .then((data) => {
+        const list = data.hazards || [];
+        setCatalog(list);
+        const wanted = new URLSearchParams(window.location.search).get('hazard');
+        setHazard(list.find((h) => h.hazard === wanted)?.hazard || list[0]?.hazard || null);
+      })
+      .catch(() => {});
+
+    const saved = loadLocation();
+    if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLocation(saved);
+    }
+
+    fetchAlertHistory()
+      .then(setHistory)
+      .catch(() => {});
   }, []);
 
+  // ── Assess the chosen location ──────────────────────────────────────────
   useEffect(() => {
-    if (basinsData.length > 0 && basinId) {
-      loadPreview();
-    }
+    if (!location) return;
+    const id = ++profileReq.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProfileLoading(true);
+
+    (async () => {
+      try {
+        let target = location;
+        if (!target.name) {
+          const named = await reverseGeocode(target.latitude, target.longitude);
+          if (named) target = { ...target, ...named };
+        }
+        const data = await fetchHazardProfile(target);
+        if (id !== profileReq.current) return;
+        setProfile(data);
+        const resolved = { ...target, ...data.location };
+        setLocation(resolved);
+        saveLocation(resolved);
+        // Only offer languages actually spoken at this location.
+        if (!(data.languages || ['en']).includes(language)) setLanguage('en');
+      } catch {
+        if (id === profileReq.current) setProfile(null);
+      } finally {
+        if (id === profileReq.current) setProfileLoading(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [basinId, role, language, basinsData]);
+  }, [location?.latitude, location?.longitude]);
 
-  async function loadBasins() {
-    try {
-      const data = await fetchBasins();
-      const list = Array.isArray(data) ? data : (data?.basins || []);
-      setBasinsData(list);
-      if (list.length > 0) {
-        setBasinId((prev) => {
-          if (prev && list.find((b) => b.id === prev)) return prev;
-          const first = list[0].id;
-          const langs = list[0].languages || ['en'];
-          setLanguage(langs[0]);
-          return first;
-        });
-      }
-    } catch (e) {
-      console.error('Failed to load basins:', e);
+  // ── Preview the exact SMS that will be sent ─────────────────────────────
+  const relevant = profile?.hazards?.some((h) => h.hazard === hazard);
+
+  useEffect(() => {
+    if (!hazard || !location || !profile || !relevant) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPreview('');
+      return;
     }
-  }
-
-  async function loadPreview() {
-    const reqId = ++previewReqId.current;
+    const id = ++previewReq.current;
+    const controller = new AbortController();
     setPreviewLoading(true);
-    setPreviewError(false);
-    setAudioBlob(null);
-    try {
-      const data = await fetchAdvisory(basinId, role, language);
-      if (reqId !== previewReqId.current) return;
-      setSmsPreview(data.sms_text || data.body || '');
-      setRequiresRecording(data.requires_recording || false);
-      if (localVoiceUrlRef.current) {
-        URL.revokeObjectURL(localVoiceUrlRef.current);
-        localVoiceUrlRef.current = null;
-      }
-      setVoiceNoteUrl(data.voice_note_url || null);
-    } catch (err) {
-      console.error('Failed to load preview:', err);
-      if (reqId !== previewReqId.current) return;
-      setPreviewError(true);
-      setSmsPreview('Could not generate a preview. Is the backend running?');
-    } finally {
-      if (reqId === previewReqId.current) {
-        setPreviewLoading(false);
-      }
-    }
-  }
+    setPreviewError(null);
 
-  async function loadHistory() {
-    try {
-      const data = await fetchAlertHistory();
-      setHistory(data);
-    } catch (err) {
-      console.error('Failed to load history:', err);
-    }
-  }
+    fetchHazardAdvisory(hazard, location, { role, language, signal: controller.signal })
+      .then((data) => {
+        if (id !== previewReq.current) return;
+        setPreview(data.sms_text || '');
+      })
+      .catch((e) => {
+        if (id !== previewReq.current || e.name === 'AbortError') return;
+        setPreviewError('Could not generate a preview.');
+        setPreview('');
+      })
+      .finally(() => {
+        if (id === previewReq.current) setPreviewLoading(false);
+      });
 
-  // Audio Recording
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        if (localVoiceUrlRef.current) {
-          URL.revokeObjectURL(localVoiceUrlRef.current);
-        }
-        const url = URL.createObjectURL(blob);
-        localVoiceUrlRef.current = url;
-        setVoiceNoteUrl(url); // preview locally
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error(err);
-      notify({ type: 'error', title: 'Mic Access', message: 'Could not access microphone.' });
-    }
-  }
-
-  function stopRecording() {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
-    }
-  }
-
-  function parsePhones(raw) {
-    return raw.split(',').map((p) => p.trim()).filter(Boolean);
-  }
-
-  // Loose E.164 sanity check (+ then 8-15 digits) — just enough to catch typos
-  // and pasted-the-wrong-thing before they reach the backend/Twilio.
-  const PHONE_RE = /^\+[1-9]\d{7,14}$/;
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hazard, location?.latitude, location?.longitude, role, language, relevant, profile]);
 
   async function handleSend() {
-    const phones = parsePhones(phoneNumber);
+    const phones = phoneNumber.split(',').map((p) => p.trim()).filter(Boolean);
     if (phones.length === 0) {
       notify({ type: 'error', title: 'No recipients', message: 'Enter at least one phone number.' });
       return;
@@ -175,7 +154,7 @@ export default function AlertsPage() {
       notify({
         type: 'error',
         title: 'Invalid phone number',
-        message: `Use international format, e.g. +2521234567: ${invalid.join(', ')}`,
+        message: `Use international format, e.g. +254712345678: ${invalid.join(', ')}`,
       });
       return;
     }
@@ -185,184 +164,197 @@ export default function AlertsPage() {
       let token = null;
       try {
         const supabase = await getSupabase();
-        const { data: { session } } = await supabase.auth.getSession();
-        token = session?.access_token;
-      } catch (e) {
-        // Guest user — proceed without token
+        const { data } = await supabase.auth.getSession();
+        token = data?.session?.access_token;
+      } catch {
+        // Guest — send without a token.
       }
-      const res = await sendAlert(basinId, role, language, phones, token);
-      if (res.success) {
-        notify({ type: 'success', title: 'Alert sent', message: res.message });
-      } else {
-        notify({ type: 'error', title: 'Send failed', message: res.message });
-      }
-      loadHistory();
-    } catch (err) {
-      notify({ type: 'error', title: 'Send failed', message: err.message });
+      const res = await sendHazardAlert({
+        hazard,
+        location,
+        role,
+        language,
+        phoneNumbers: phones,
+        token,
+      });
+      notify({
+        type: res.success ? 'success' : 'error',
+        title: res.success ? 'Alert queued' : 'Not sent',
+        message: res.message,
+      });
+      fetchAlertHistory().then(setHistory).catch(() => {});
+    } catch (e) {
+      notify({ type: 'error', title: 'Send failed', message: e.message });
     } finally {
       setSending(false);
     }
-  }
-
-  function handleBasinChange(e) {
-    const newBasinId = e.target.value;
-    setBasinId(newBasinId);
-    // Reset language to the first supported language for the new basin
-    const selected = basinsData.find(b => b.id === newBasinId);
-    const langs = selected?.languages || ['en'];
-    setLanguage(langs[0]);
   }
 
   if (authLoading) {
     return <div className="loading-container" style={{ minHeight: '60vh' }} />;
   }
 
-  // Basin specific language filter
-  const currentBasinConfig = basinsData.find(b => b.id === basinId);
-  const supportedLanguages = currentBasinConfig ? currentBasinConfig.languages : ['en'];
-  const filteredLanguages = LANGUAGES.filter(l => supportedLanguages.includes(l.value));
+  const languages = profile?.languages?.length ? profile.languages : ['en'];
+  const selectedMeta = hazard ? hazardMeta(hazard) : null;
+  const canSend = Boolean(hazard && location && relevant && !previewLoading && preview);
 
   return (
     <div className="page-container">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div
+        className="page-header"
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+      >
         <div>
           <h1 className="page-title">Alerts</h1>
-          <p className="page-description">Generate and send multilingual flood advisories via Cloudflare SMS Workers.</p>
+          <p className="page-description">
+            Send a plain-language advisory to a phone, for any hazard, anywhere. Pick the hazard,
+            then the place.
+          </p>
         </div>
-        {user && <button className="btn" onClick={logout}>Logout</button>}
+        {user ? (
+          <button className="btn" onClick={logout}>Logout</button>
+        ) : (
+          <button className="btn" onClick={() => setShowAuthModal(true)}>Sign in</button>
+        )}
       </div>
 
       <div className="grid-2col">
         <div className="card">
-          <div className="card-header"><div className="card-title">Send an alert</div></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            
-            <div className="form-group">
-              <label className="form-label" htmlFor="basin">Basin</label>
-              <select
-                id="basin"
-                className="form-select"
-                value={basinId}
-                onChange={handleBasinChange}
-              >
-                {basinsData.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
+          <div className="card-header">
+            <div className="card-title">1 · Choose a hazard</div>
+          </div>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="target-role">Audience</label>
-              <select
-                id="target-role"
-                className="form-select"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-              >
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-            </div>
+          <div className="hazard-chooser">
+            {catalog.map((h) => {
+              const meta = hazardMeta(h.hazard);
+              return (
+                <button
+                  key={h.hazard}
+                  type="button"
+                  className={`hazard-chip ${hazard === h.hazard ? 'active' : ''}`}
+                  onClick={() => setHazard(h.hazard)}
+                  aria-pressed={hazard === h.hazard}
+                >
+                  <span aria-hidden="true">{meta.icon}</span> {meta.short}
+                </button>
+              );
+            })}
+          </div>
 
+          <div className="card-header" style={{ marginTop: 20 }}>
+            <div className="card-title">2 · Choose a place</div>
+          </div>
+          <LocationBar location={location} onSelect={setLocation} busy={profileLoading} />
+
+          {location && profile && !profileLoading && !relevant && (
+            <div className="notice notice--warn" role="status" style={{ marginTop: 10 }}>
+              {selectedMeta?.label} is not a relevant hazard at {placeLabel(location)} — Tayari
+              found no physical basis for it there, so there is nothing to warn about. Choose a
+              different hazard or place.
+            </div>
+          )}
+
+          <div className="card-header" style={{ marginTop: 20 }}>
+            <div className="card-title">3 · Who it is for</div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="alert-role">Audience</label>
+            <select
+              id="alert-role"
+              className="form-select"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {languages.length > 1 && (
             <div className="form-group">
               <label className="form-label">Language</label>
               <div className="lang-selector">
-                {filteredLanguages.map((l) => (
+                {languages.map((code) => (
                   <button
-                    key={l.value}
-                    className={`lang-btn ${language === l.value ? 'active' : ''}`}
-                    onClick={() => setLanguage(l.value)}
+                    key={code}
+                    type="button"
+                    className={`lang-btn ${language === code ? 'active' : ''}`}
+                    onClick={() => setLanguage(code)}
                   >
-                    {l.label}
+                    {LANGUAGE_LABELS[code] || code}
                   </button>
                 ))}
               </div>
             </div>
+          )}
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="phones">Phone number(s)</label>
-              <input
-                id="phones"
-                className="form-input"
-                type="text"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="+2521234567"
-              />
-            </div>
-
-            <button
-              className="btn btn-primary btn-lg"
-              onClick={handleSend}
-              disabled={sending || previewLoading || (requiresRecording && !audioBlob)}
-              style={{ marginTop: '4px' }}
-            >
-              {sending ? 'Sending…' : 'Dispatch Alert'}
-            </button>
+          <div className="form-group">
+            <label className="form-label" htmlFor="phones">Phone number(s)</label>
+            <input
+              id="phones"
+              className="form-input"
+              type="text"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="+254712345678, +252612345678"
+            />
+            <p className="form-hint">
+              International format. Separate several with commas. Each number can receive one
+              alert every five minutes.
+            </p>
           </div>
+
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={handleSend}
+            disabled={sending || !canSend}
+            style={{ width: '100%', marginTop: 4 }}
+          >
+            {sending ? 'Sending…' : 'Send advisory'}
+          </button>
         </div>
 
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Advisory Preview</div>
-            {requiresRecording && <span className="risk-badge risk-badge--extreme">Manual Recording Required</span>}
+            <div className="card-title">What they will receive</div>
+            {previewLoading && <span className="card-subtitle">Writing…</span>}
           </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div style={{
-              background: 'var(--surface-sunken)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)',
-              padding: '14px', fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.65',
-              color: previewError ? 'var(--risk-high)' : 'var(--text-secondary)', minHeight: '150px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>
-              {previewLoading ? <div className="spinner" /> : smsPreview}
-            </div>
 
-            {requiresRecording && (
-              <div style={{ padding: '15px', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-sm)', background: 'rgba(131, 41, 26, 0.05)' }}>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                  <strong>Low Resource Language:</strong> Automated TTS is not supported. Please record the voice note manually. The audio will be sent ephemerally.
-                </p>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  {!isRecording ? (
-                    <button className="btn" onClick={startRecording} style={{ background: 'var(--risk-high)', color: '#fff', borderColor: 'transparent' }}>
-                      ● Record Audio
-                    </button>
-                  ) : (
-                    <button className="btn" onClick={stopRecording} style={{ borderColor: 'var(--risk-high)', color: 'var(--risk-high)' }}>
-                      ■ Stop Recording
-                    </button>
-                  )}
-                  {isRecording && <span className="spinner" style={{ width: 14, height: 14, borderColor: 'var(--risk-high)', borderRightColor: 'transparent' }}></span>}
-                </div>
-              </div>
-            )}
-
-            {voiceNoteUrl && (
-              <div style={{ marginTop: '10px' }}>
-                <p style={{ fontSize: 12, fontWeight: 500, marginBottom: 5 }}>Voice Preview:</p>
-                <audio controls src={audioBlob ? voiceNoteUrl : resolveAssetUrl(voiceNoteUrl)} style={{ width: '100%', height: 40 }} />
-              </div>
+          <div className={`sms-preview ${previewError ? 'sms-preview--error' : ''}`}>
+            {previewLoading ? (
+              <div className="spinner" />
+            ) : previewError ? (
+              previewError
+            ) : preview ? (
+              preview
+            ) : (
+              'Choose a hazard and a place to see the exact message that will be sent.'
             )}
           </div>
+
+          {preview && (
+            <p className="form-hint" style={{ marginTop: 10 }}>
+              {preview.length} characters — about {Math.ceil(preview.length / 153)} SMS parts.
+            </p>
+          )}
         </div>
       </div>
-      
-      <div className="card" style={{ marginTop: '20px' }}>
+
+      <div className="card" style={{ marginTop: 20 }}>
         <div className="card-header">
           <div className="card-title">Alert history</div>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            {history.length} sent
-          </span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{history.length} sent</span>
         </div>
         {history.length === 0 ? (
-          <div className="empty-state">No alerts sent yet. Send your first one above.</div>
+          <div className="empty-state">No alerts sent yet.</div>
         ) : (
           <div className="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>Basin</th>
+                  <th>Subject</th>
                   <th>Risk</th>
                   <th>Audience</th>
                   <th>Language</th>
@@ -371,27 +363,22 @@ export default function AlertsPage() {
                 </tr>
               </thead>
               <tbody>
-                {history
-                  .slice()
-                  .reverse()
-                  .map((alert) => (
-                    <tr key={alert.id}>
-                      <td>{alert.basin_id}</td>
-                      <td>
-                        <span
-                          className={`risk-badge risk-badge--${alert.risk_level?.toLowerCase()}`}
-                        >
-                          {alert.risk_level}
-                        </span>
-                      </td>
-                      <td>{alert.role}</td>
-                      <td>{alert.language}</td>
-                      <td>{alert.recipients_count}</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-                        {new Date(alert.sent_at).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
+                {history.slice().reverse().map((alert) => (
+                  <tr key={alert.id}>
+                    <td>{formatSubject(alert.basin_id)}</td>
+                    <td>
+                      <span className={`risk-badge risk-badge--${alert.risk_level?.toLowerCase()}`}>
+                        {alert.risk_level}
+                      </span>
+                    </td>
+                    <td>{alert.role}</td>
+                    <td>{alert.language}</td>
+                    <td>{alert.recipients_count}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                      {new Date(alert.sent_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -401,4 +388,17 @@ export default function AlertsPage() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
     </div>
   );
+}
+
+/**
+ * Render an alert's subject key.
+ *
+ * History rows carry either a basin id (`shabelle`) or a hazard-and-place key
+ * (`extreme_heat@-33.87,151.21`), because the two alert paths share one column.
+ */
+function formatSubject(subject) {
+  if (!subject) return '—';
+  if (!subject.includes('@')) return subject;
+  const [hazard, coords] = subject.split('@');
+  return `${hazardMeta(hazard).short} · ${coords}`;
 }

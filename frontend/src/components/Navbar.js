@@ -10,13 +10,14 @@ export default function Navbar() {
   const [showFeedback, setShowFeedback] = useState(false);
   const pathname = usePathname();
 
+  // "Basins" is gone from here on purpose. A river basin is flood-only
+  // hydrology jargon, and having it as a top-level destination in a nine-hazard
+  // product told the wrong story about what this is — someone worried about an
+  // earthquake had no way in. The eight calibrated basins now live under the
+  // flood hazard, which is what they are a detail of.
   const links = [
-    { href: '/', label: 'Hazards' },
-    // The eight calibrated flood basins keep their own entry rather than being
-    // folded into the location view: their thresholds are tuned against real
-    // historical floods, which makes them a genuinely different — and better —
-    // answer for the places they cover.
-    { href: '/basins', label: 'Basins' },
+    { href: '/', label: 'My area' },
+    { href: '/hazards', label: 'Hazards' },
     { href: '/alerts', label: 'Alerts' },
     { href: '/report', label: 'Report' },
   ];

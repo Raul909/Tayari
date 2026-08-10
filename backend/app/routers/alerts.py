@@ -23,6 +23,7 @@ from app.limiter import limiter
 
 from app.db import get_session
 from app.models.db_models import AdviceORM, AlertORM, ReportORM, UserProfileORM
+from app.models.hazards import HazardAlertRequest, alert_subject
 from app.models.schemas import (
     AdviceSubmission, AlertRecord, AlertRequest, AlertResponse,
     CommunityReport, ReportAdvice, ReportEdit, ReportStatus, ReportSubmission,
@@ -259,6 +260,144 @@ async def _process_and_send_alert(request: AlertRequest, basin, alert_row_id: in
         logger.error(f"Failed to process background alert for {basin.id}: {e}")
         # Drop the PENDING reservation so a failed send doesn't permanently
         # block future alerts for this basin.
+        async with SessionLocal() as session:
+            row = await session.get(AlertORM, alert_row_id)
+            if row is not None and row.risk_level == "PENDING":
+                await session.delete(row)
+                await session.commit()
+
+
+@router.post("/alerts/hazard/send", response_model=AlertResponse, status_code=202)
+@limiter.limit("5/hour")
+async def send_hazard_alert(
+    request: Request,
+    alert_req: HazardAlertRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    user: Optional[UserProfileORM] = Depends(get_optional_user),
+):
+    """
+    Send an SMS advisory for any hazard at any location.
+
+    The basin endpoint above only ever worked for eight rivers. This one takes a
+    hazard and a coordinate, so a heatwave warning for Seville and a landslide
+    warning for a hillside in Nepal go out through the same path.
+
+    Carries the same two protections: a five-minute per-phone cooldown so one
+    number cannot be alerted repeatedly, and a twelve-hour duplicate guard per
+    subject so a hazard is not re-sent to a community that already heard it.
+    """
+    now = time.time()
+    rate_limited = [
+        p for p in alert_req.phone_numbers
+        if (now - _phone_send_history.get(p, 0)) < PHONE_COOLDOWN_SECONDS
+    ]
+    if rate_limited:
+        wait_min = int(
+            (PHONE_COOLDOWN_SECONDS - (now - _phone_send_history[rate_limited[0]])) / 60
+        ) + 1
+        return AlertResponse(
+            success=False,
+            message=(
+                f"Rate limit: {', '.join(rate_limited)} received an alert recently. "
+                f"Please wait ~{wait_min} min before sending again."
+            ),
+            sms_count=0,
+        )
+
+    subject = alert_subject(alert_req.hazard, alert_req.latitude, alert_req.longitude)
+
+    async with _get_alert_lock(subject):
+        stmt = (
+            select(AlertORM)
+            .where(
+                AlertORM.basin_id == subject,
+                AlertORM.risk_level.in_(["HIGH", "EXTREME", "PENDING"]),
+            )
+            .order_by(AlertORM.id.desc())
+            .limit(1)
+        )
+        recent = (await session.scalars(stmt)).first()
+        if recent:
+            if recent.risk_level == "PENDING":
+                return AlertResponse(
+                    success=True,
+                    message="Alert skipped: a send for this hazard and place is already in progress.",
+                    sms_count=0,
+                )
+            elapsed = datetime.now(recent.sent_at.tzinfo) - recent.sent_at
+            if elapsed.total_seconds() < 12 * 3600:
+                return AlertResponse(
+                    success=True,
+                    message=(
+                        "Alert skipped: an alert for this hazard and place was already "
+                        "sent within the last 12 hours."
+                    ),
+                    sms_count=0,
+                )
+
+        for phone in alert_req.phone_numbers:
+            _phone_send_history[phone] = now
+
+        pending = AlertORM(
+            basin_id=subject,
+            risk_level="PENDING",
+            role=alert_req.role.value,
+            language=alert_req.language.value,
+            recipients_count=len(alert_req.phone_numbers),
+            advisory_text="",
+        )
+        session.add(pending)
+        await session.commit()
+        await session.refresh(pending)
+
+    background_tasks.add_task(
+        _process_and_send_hazard_alert, alert_req=alert_req, alert_row_id=pending.id
+    )
+    return AlertResponse(
+        success=True,
+        message="Alert processing queued successfully.",
+        sms_count=len(alert_req.phone_numbers),
+    )
+
+
+async def _process_and_send_hazard_alert(alert_req: HazardAlertRequest, alert_row_id: int):
+    """Assess the location, write the advisory, send it, and resolve the record."""
+    from app.db import SessionLocal
+    from app.hazards.advisory import generate_hazard_advisory, sms_text as build_sms
+    from app.hazards.engine import assess_location
+    from app.models.hazards import LocationRef
+
+    try:
+        place = LocationRef(
+            latitude=alert_req.latitude,
+            longitude=alert_req.longitude,
+            name=alert_req.place_name,
+        )
+        profile = await assess_location(alert_req.latitude, alert_req.longitude, place=place)
+        risk = next((r for r in profile.hazards if r.hazard == alert_req.hazard), None)
+        if risk is None:
+            raise ValueError(
+                f"'{alert_req.hazard.value}' is not a relevant hazard at this location"
+            )
+
+        advisory = await generate_hazard_advisory(
+            risk=risk, location=profile.location, role=alert_req.role, language=alert_req.language
+        )
+        text = build_sms(advisory)
+        await send_sms_alert(text, alert_req.phone_numbers)
+
+        async with SessionLocal() as session:
+            row = await session.get(AlertORM, alert_row_id)
+            if row is not None:
+                row.risk_level = risk.risk_level.value
+                row.advisory_text = text
+                await session.commit()
+
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to process hazard alert #{alert_row_id}: {e}")
+        # Drop the reservation so a failed send does not block this subject for
+        # the next twelve hours.
         async with SessionLocal() as session:
             row = await session.get(AlertORM, alert_row_id)
             if row is not None and row.risk_level == "PENDING":

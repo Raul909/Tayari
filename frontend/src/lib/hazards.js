@@ -154,6 +154,42 @@ export function fetchLiveEvents({ minMagnitude = 4.5, days = 7 } = {}, options =
   return getJson(`/api/hazards/events/live?${params}`, options);
 }
 
+/**
+ * Send an SMS advisory for one hazard at one location.
+ *
+ * Returns 202 with a queued message — the backend assesses, writes and
+ * translates the advisory in the background, because doing it inline would
+ * hold the request open for the length of an LLM call.
+ */
+export async function sendHazardAlert({
+  hazard,
+  location,
+  role = 'general',
+  language = 'en',
+  phoneNumbers,
+  token,
+}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/api/alerts/hazard/send`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      hazard,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      place_name: location.name || null,
+      role,
+      language,
+      phone_numbers: phoneNumbers,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || `Failed to send alert (${res.status})`);
+  return body;
+}
+
 /** Search for a place by name. */
 export function searchPlaces(query, { count = 8, signal } = {}) {
   const params = new URLSearchParams({ q: query, count });
