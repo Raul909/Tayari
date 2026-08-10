@@ -1,7 +1,7 @@
 # Tayari — Mobile App
 
-The field-facing companion to **Tayari**, the flood early warning system. Built
-with Flutter for low-bandwidth, offline-first use in the IGAD region.
+The field-facing companion to **Tayari**, the multi-hazard early warning system.
+Built with Flutter for low-bandwidth, offline-first use in the field.
 
 ## What's here
 

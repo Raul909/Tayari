@@ -5,10 +5,11 @@ import { ToastProvider } from '@/components/Toast';
 import { AuthProvider } from '@/lib/auth';
 
 export const metadata = {
-  title: 'Tayari — Flood Early Warning',
+  title: 'Tayari — Multi-Hazard Early Warning',
   description:
-    'Flood early warning and early action for the IGAD region. Predicts river flooding, generates multilingual advisories, and delivers alerts via SMS.',
-  keywords: 'flood, early warning, IGAD, Somalia, Kenya, climate, ICPAC',
+    'Early warning and early action for wherever you are. Tayari scores flood, earthquake, tsunami, volcanic, storm, heat, wildfire, drought and landslide risk for any location on Earth, then explains what to do in your language.',
+  keywords:
+    'early warning, disaster, flood, earthquake, tsunami, volcano, cyclone, heatwave, wildfire, drought, landslide, hazard alerts, climate',
 };
 
 export const viewport = {

@@ -156,7 +156,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               if (basins != null) _drawBasinMarkers(basins);
             },
             initialCameraPosition: const CameraPosition(
-              target: LatLng(2.0, 42.0), // IGAD region
+              target: LatLng(2.0, 42.0), // Monitored basin region
               zoom: 5.0,
             ),
             styleString: 'https://tiles.openfreemap.org/styles/positron',

@@ -1,6 +1,6 @@
 # Execution & Development Plan: Tayari Mobile App
 
-This document outlines the step-by-step strategy for building the Tayari native mobile app using Flutter, ensuring a highly optimized, low-bandwidth, and offline-capable deliverable suitable for the IGAD region constraints.
+This document outlines the step-by-step strategy for building the Tayari native mobile app using Flutter, ensuring a highly optimized, low-bandwidth, and offline-capable deliverable suitable for low-connectivity field conditions.
 
 ## 1. Project Initialization & Tooling
 - **Framework:** Flutter (latest stable release).
@@ -36,7 +36,7 @@ This document outlines the step-by-step strategy for building the Tayari native 
    - Use `flutter build apk --split-per-abi` to generate minimal binaries (targeting ~15-20MB).
 
 ## 3. Bundle Size Optimization Strategies
-Given the high cost of mobile data in rural IGAD regions, the app size must be minimized:
+Given the high cost of mobile data in the rural areas this app serves, its size must be minimized:
 - **Vector over Raster:** Using MapLibre vector maps eliminates the need to download large raster image files.
 - **Font Subsetting:** Include only necessary glyphs for custom fonts.
 - **Split ABIs:** Delivering `armeabi-v7a` and `arm64-v8a` separately reduces APK size by up to 50% compared to a fat APK.

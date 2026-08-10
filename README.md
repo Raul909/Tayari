@@ -1,7 +1,7 @@
 <div align="center">
   <h1>🌊 Tayari</h1>
-  <p><b>AI Flood Early Warning & Early Action System</b></p>
-  <p><i>Built for the IGAD Hackathon 2026</i></p>
+  <p><b>AI Multi-Hazard Early Warning & Early Action System</b></p>
+  <p><i>Flood · Earthquake · Tsunami · Volcano · Storm · Heat · Wildfire · Drought · Landslide</i></p>
   <p>
     <a href="https://tayari.pages.dev"><b>🌐 Use it now — free at tayari.pages.dev</b></a>
     ·
@@ -85,7 +85,7 @@ A small **Cloudflare Worker** does double duty: it proxies Open-Meteo requests (
 
 ## 📍 Target Basins
 
-Tayari monitors **eight** high-risk river basins across the IGAD region — chosen because each has a documented history of destructive flooding and vulnerable riverside communities:
+Alongside worldwide location lookup, Tayari keeps **eight** river basins under continuous, individually calibrated watch — chosen because each has a documented history of destructive flooding and vulnerable riverside communities:
 
 | Basin | River | Country | Gauge (Town) | Historical Context |
 |-------|-------|---------|--------------|--------------------|
@@ -139,7 +139,7 @@ npm run dev
 Head over to `http://localhost:3000` and you should see the MapLibre dashboard lighting up with live basin data!
 
 ### Running the Mobile App (Flutter)
-The native mobile app is optimized for low-bandwidth environments in the IGAD region, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories. Prefer not to build it yourself? Grab the APK from [GitHub Releases](https://github.com/Raul909/Tayari/releases).
+The native mobile app is optimized for low-bandwidth environments, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories. Prefer not to build it yourself? Grab the APK from [GitHub Releases](https://github.com/Raul909/Tayari/releases).
 ```bash
 cd tayari_mobile
 flutter pub get

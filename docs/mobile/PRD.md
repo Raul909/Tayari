@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD): Tayari Mobile App
 
 ## 1. Vision & Purpose
-Tayari Mobile brings AI-powered flood early warnings directly to the hands of those who need it most in the IGAD region (farmers, pastoralists, community leaders). Unlike the web dashboard, the mobile app is optimized for challenging connectivity environments—acting as a fast, offline-capable lifeline.
+Tayari Mobile brings AI-powered hazard early warnings directly to the hands of those who need them most (farmers, pastoralists, community leaders). Unlike the web dashboard, the mobile app is optimized for challenging connectivity environments—acting as a fast, offline-capable lifeline.
 
 ## 2. Target Audience
 - **Primary:** Rural farmers and pastoralists living in flood-prone basins (Shabelle, Juba, Tana).

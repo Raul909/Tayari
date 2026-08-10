@@ -2,7 +2,7 @@
 
 Welcome to the Mobile Architecture branch of the Tayari project! 
 
-While the main branch contains the FastAPI backend and Next.js PWA web dashboard, this directory outlines the comprehensive architectural blueprint for the **native mobile application**, designed specifically for the challenging operational constraints of the IGAD region (low connectivity, older devices, high data costs).
+While the main branch contains the FastAPI backend and Next.js PWA web dashboard, this directory outlines the comprehensive architectural blueprint for the **native mobile application**, designed specifically for the challenging operational constraints of at-risk communities everywhere (low connectivity, older devices, high data costs).
 
 ## 📄 Documentation Index
 

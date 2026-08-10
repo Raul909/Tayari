@@ -58,9 +58,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Tayari API",
     description=(
-        "AI Flood Early Warning & Early Action System for the IGAD region. "
-        "Predicts river flooding 1-7 days ahead, generates multilingual "
-        "impact-based advisories, and delivers alerts via SMS."
+        "AI Multi-Hazard Early Warning & Early Action System. "
+        "Scores flood, earthquake, tsunami, volcanic, storm, heat, wildfire, "
+        "drought and landslide risk for any location on Earth, generates "
+        "multilingual impact-based advisories, and delivers alerts via SMS."
     ),
     version=settings.app_version,
     lifespan=lifespan,
