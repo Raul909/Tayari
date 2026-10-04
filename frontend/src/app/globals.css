@@ -2113,7 +2113,7 @@ tr:hover td { background: var(--surface-sunken); }
   margin-bottom: 12px;
 }
 
-.hazard-sources .source-list {
+.source-list {
   list-style: none;
   display: flex;
   flex-direction: column;
@@ -2123,7 +2123,7 @@ tr:hover td { background: var(--surface-sunken); }
   line-height: 1.5;
 }
 
-.hazard-sources .source-list li::before {
+.source-list li::before {
   content: '↳ ';
   color: var(--text-muted);
 }
