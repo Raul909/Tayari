@@ -51,6 +51,7 @@ ERUPTION_LOOKBACK_YEARS = 3
 USGS_COUNT = "https://earthquake.usgs.gov/fdsnws/event/1/count"
 USGS_QUERY = "https://earthquake.usgs.gov/fdsnws/event/1/query"
 USGS_EVENT_PAGE = "https://earthquake.usgs.gov/earthquakes/eventpage/"
+USGS_MONTH_FEED = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_month.geojson"
 
 DAILY_FORECAST_VARS = (
     "temperature_2m_max,temperature_2m_min,apparent_temperature_max,"
@@ -70,6 +71,7 @@ _climate_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=256)
 _discharge_climatology_cache = TTLCache(ttl_seconds=7 * 24 * 3600, max_entries=256)
 _seismic_cache = TTLCache(ttl_seconds=24 * 3600, max_entries=256)
 _quake_cache = TTLCache(ttl_seconds=180)
+_month_catalog_lock = asyncio.Lock()
 _eruption_cache = TTLCache(ttl_seconds=6 * 3600, max_entries=4)
 _geocode_cache = TTLCache(ttl_seconds=24 * 3600)
 
@@ -597,6 +599,35 @@ async def fetch_seismic_history(latitude: float, longitude: float) -> Optional[S
     return history
 
 
+async def _month_catalog() -> Optional[list[dict]]:
+    """
+    Every M2.5+ earthquake on Earth in the past 30 days, from USGS's static feed.
+
+    One file serves every location. The per-point FDSN radius query it replaces
+    took around eight seconds cold — the whole profile waited on it while the
+    other six feeds had finished in under one — whereas this is a CDN-cached
+    file of roughly 170 KB that we filter in memory. The lock stops a burst of
+    cold requests from each downloading it.
+    """
+    cached = _quake_cache.get("month-catalog")
+    if cached is not None:
+        return cached
+    async with _month_catalog_lock:
+        cached = _quake_cache.get("month-catalog")
+        if cached is not None:
+            return cached
+        client = await get_client()
+        try:
+            resp = await client.get(USGS_MONTH_FEED, timeout=httpx.Timeout(8.0, connect=5.0))
+            resp.raise_for_status()
+            features = resp.json().get("features") or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"USGS month feed failed: {e}")
+            return None
+        _quake_cache.set("month-catalog", features)
+        return features
+
+
 async def fetch_recent_quakes(
     latitude: float, longitude: float, radius_km: int = RECENT_QUAKE_RADIUS_KM
 ) -> Optional[list[HazardEvent]]:
@@ -606,6 +637,22 @@ async def fetch_recent_quakes(
     if cached is not None:
         return cached
 
+    catalog = await _month_catalog()
+    if catalog is not None:
+        nearby = [
+            evt
+            for evt in (_quake_to_event(f, latitude, longitude) for f in catalog)
+            if evt is not None
+            and evt.distance_km is not None
+            and evt.distance_km <= radius_km
+            and (evt.magnitude or 0) >= RECENT_QUAKE_MIN_MAG
+        ]
+        nearby.sort(key=lambda e: e.magnitude or 0, reverse=True)
+        events = nearby[:25]
+        _quake_cache.set(key, events)
+        return events
+
+    # The static feed is down: fall back to asking FDSN for this point alone.
     start = (datetime.now(timezone.utc) - timedelta(days=RECENT_QUAKE_DAYS)).date()
     client = await get_client()
     try:
@@ -892,3 +939,11 @@ async def search_places(name: str, count: int = 8) -> list[PlaceResult]:
     ]
     _geocode_cache.set(key, places)
     return places
+
+
+async def warm_global_feeds() -> None:
+    """Fill the caches that every location shares. Never raises."""
+    results = await asyncio.gather(_month_catalog(), fetch_eruptions(), return_exceptions=True)
+    for label, result in zip(("month quake catalog", "eruptions"), results):
+        if isinstance(result, BaseException) or result is None:
+            logger.info(f"Startup warm of {label} skipped: {result!r}")

@@ -48,7 +48,16 @@ async def lifespan(app: FastAPI):
     await init_db()
     await migrate_legacy_reports()
 
+    # Warm the location-independent feeds in the background. A Render cold
+    # start is exactly when the first visitor is waiting, and these two global
+    # downloads would otherwise land on that visitor's request.
+    import asyncio
+    from app.hazards.feeds import warm_global_feeds
+    warm_task = asyncio.create_task(warm_global_feeds())
+
     yield
+
+    warm_task.cancel()
 
     # Cleanup
     from app.services.flood_data import _client
