@@ -75,9 +75,9 @@ export default function AuthModal({ onClose }) {
           
           {view === 'reset_sent' ? (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <h3 style={{ marginBottom: '10px', color: 'var(--color-primary)' }}>Check Your Email</h3>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                We've sent a password reset link to <strong>{email}</strong>.
+              <h3 style={{ marginBottom: '10px', color: 'var(--text-primary)' }}>Check Your Email</h3>
+              <p style={{ color: 'var(--text-secondary)' }}>
+                We&apos;ve sent a password reset link to <strong>{email}</strong>.
               </p>
               <button 
                 type="button" 
@@ -131,7 +131,7 @@ export default function AuthModal({ onClose }) {
                         onClick={() => changeView('forgot_password')}
                         style={{ 
                           background: 'none', border: 'none', padding: 0, 
-                          color: 'var(--color-primary)', cursor: 'pointer', fontSize: '0.85rem' 
+                          color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.85rem' 
                         }}
                       >
                         Forgot Password?
@@ -142,8 +142,8 @@ export default function AuthModal({ onClose }) {
               )}
 
               {view === 'forgot_password' && (
-                 <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: '15px' }}>
-                   Enter your email address and we'll send you a link to reset your password.
+                 <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                   Enter your email address and we&apos;ll send you a link to reset your password.
                  </div>
               )}
 

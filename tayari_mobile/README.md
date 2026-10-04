@@ -5,14 +5,23 @@ Built with Flutter for low-bandwidth, offline-first use in the field.
 
 ## What's here
 
-- **Dashboard** — a MapLibre map of the monitored basins with a live, cached
-  basin list (risk level + flood probability). Tap a basin to open its detail.
-- **Basin detail** — flood risk, an impact assessment (people, schools, health
-  facilities at risk), and a role/language-tailored advisory. Everything is
-  cached locally so it stays readable offline.
-- **Community report** — snap a photo, auto-capture GPS, pick a condition, and
-  submit. Reports are compressed, saved to a local queue, and uploaded to the
-  backend as soon as there's a connection.
+Four tabs along the bottom:
+
+- **My area** (opens here) — use your location or search any town, and Tayari
+  checks nine hazards there: flooding, earthquake, tsunami, volcanic activity,
+  storms, heat, wildfire, drought and landslide. A plain-words banner gives the
+  answer (*All clear for now*, *Stay alert*, *Take action*) with one tap to what
+  to do about the most urgent hazard. Each hazard opens to advice for your role
+  and language first, then the readings behind it. The last place and result are
+  kept on the phone and shown instantly — with their age — so the screen is
+  useful offline.
+- **Basins** — the eight calibrated river basins on a MapLibre map with a
+  cached list (risk level + flood probability). Tap a basin for its flood risk,
+  impact assessment and a role/language-tailored advisory, all readable offline.
+- **Reports** — community reports with advice threads. Snap a photo, capture
+  GPS, pick a condition and submit; reports are compressed, queued locally and
+  uploaded as soon as there's a connection.
+- **Settings** — your role, language and home basin, plus feedback.
 
 ## Architecture
 
@@ -24,7 +33,10 @@ Built with Flutter for low-bandwidth, offline-first use in the field.
 - **Media/Location:** `image_picker`, `geolocator`, `flutter_image_compress`
 
 Basins and forecasts are read from Isar and rendered immediately; a background
-sync refreshes them from the API when reachable.
+sync refreshes them from the API when reachable. The multi-hazard profile
+(`lib/services/hazard_api.dart`) uses the same `/api/hazards` endpoints as the
+web app, with longer timeouts than the basin client because a place nobody has
+asked about yet gathers seven live feeds, and a cold server start adds to that.
 
 ## Running
 
@@ -48,10 +60,17 @@ For a physical device, override it:
 flutter run --dart-define=API_BASE_URL=http://<your-computer-ip>:8000/api
 ```
 
+## Tests
+
+```bash
+flutter test
+```
+
 ## Permissions
 
-Camera and location are required to submit geotagged reports. The app requests
-them at the point of use.
+Location is used for *My area* and to geotag reports; photos go through the
+system camera app. Both are requested only when you tap the action that needs
+them.
 
 ## Note
 

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import LocationBar from '@/components/LocationBar';
-import AuthModal from '@/components/AuthModal';
 import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
 import { getSupabase } from '@/lib/supabase';
@@ -34,8 +33,7 @@ const PHONE_RE = /^\+[1-9]\d{7,14}$/;
  * and Tayari works out whether that hazard is even relevant there.
  */
 export default function AlertsPage() {
-  const { user, loading: authLoading, logout } = useAuth();
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { loading: authLoading } = useAuth();
 
   const [catalog, setCatalog] = useState([]);
   const [hazard, setHazard] = useState(null);
@@ -200,22 +198,14 @@ export default function AlertsPage() {
 
   return (
     <div className="page-container">
-      <div
-        className="page-header"
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
-      >
-        <div>
-          <h1 className="page-title">Alerts</h1>
-          <p className="page-description">
-            Send a plain-language advisory to a phone, for any hazard, anywhere. Pick the hazard,
-            then the place.
-          </p>
-        </div>
-        {user ? (
-          <button className="btn" onClick={logout}>Logout</button>
-        ) : (
-          <button className="btn" onClick={() => setShowAuthModal(true)}>Sign in</button>
-        )}
+      {/* Sign in / out lives in the header on every page; a second copy here
+          showed two "Sign in" buttons stacked on a phone. */}
+      <div className="page-header">
+        <h1 className="page-title">Alerts</h1>
+        <p className="page-description">
+          Send a plain-language advisory to a phone, for any hazard, anywhere. Pick the hazard,
+          then the place.
+        </p>
       </div>
 
       <div className="grid-2col">
@@ -385,7 +375,6 @@ export default function AlertsPage() {
         )}
       </div>
 
-      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
     </div>
   );
 }

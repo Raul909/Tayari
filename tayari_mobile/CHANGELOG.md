@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.9.0] - 2026-10-04
+### Added
+- **My area — nine hazards, anywhere.** The app now opens on the same question
+  as the web dashboard: *what threatens where I am?* Use your location or search
+  any town, and Tayari checks flooding, earthquakes, tsunami, volcanoes, storms,
+  heat, wildfire, drought and landslides there. The answer leads in plain words
+  (*All clear for now*, *Stay alert*, *Take action*), with one tap to what to do
+  about the most urgent hazard.
+- **Hazard details, advice first.** Opening a hazard shows the advice for your
+  role and language before the readings it is based on.
+- **Works offline.** The last place you checked and its result are kept on the
+  phone and shown immediately, with how old they are, while a fresh check runs.
+
+### Changed
+- **Bottom navigation.** *My area*, *Basins*, *Reports* and *Settings* are now
+  labelled tabs under your thumb, instead of five unlabelled icons in the top
+  bar. Feedback lives in Settings.
+- Faint grey text is darker so it can be read outdoors.
+
 ## [1.8.0] - 2026-07-31
 ### Added
 - **Optional sign-in.** You can now create a Tayari account or sign in from the

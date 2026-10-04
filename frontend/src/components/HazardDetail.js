@@ -56,8 +56,8 @@ export default function HazardDetail({ risk, location, onClose }) {
 
   return (
     <div className="hazard-detail">
-      <button className="mobile-back-btn" onClick={onClose}>
-        ← Back to hazards
+      <button type="button" className="mobile-back-btn" onClick={onClose}>
+        <span aria-hidden="true">←</span> Back to all hazards
       </button>
 
       <header className="hazard-detail-head">
@@ -86,6 +86,104 @@ export default function HazardDetail({ risk, location, onClose }) {
             {risk.lead_time}
           </p>
         )}
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">What to do</div>
+          {loading && <span className="card-subtitle">Writing…</span>}
+        </div>
+
+        <div className="advisory-controls">
+          <div className="form-group">
+            <label className="form-label" htmlFor="hazard-role">
+              Written for
+            </label>
+            <select
+              id="hazard-role"
+              className="form-select"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Only languages the backend says are actually spoken here. Offering
+              Somali in Peru would be worse than useless — it would push the
+              English version out of view. */}
+          {location.languages && location.languages.length > 1 && (
+            <div className="form-group">
+              <span className="form-label" id="hazard-lang-label">
+                Language
+              </span>
+              <div className="lang-selector" role="group" aria-labelledby="hazard-lang-label">
+                {location.languages.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    className={`lang-btn ${language === code ? 'active' : ''}`}
+                    aria-pressed={language === code}
+                    onClick={() => setLanguage(code)}
+                  >
+                    {LANGUAGE_LABELS[code] || code}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="notice notice--error" role="alert">
+            {error}
+          </div>
+        )}
+
+        {loading && !advisory ? (
+          <div className="loading-container">
+            <div className="spinner" />
+          </div>
+        ) : advisory ? (
+          <div className={`advisory-card advisory-card--${level}`}>
+            <h3 className="advisory-title">{advisory.title}</h3>
+            <p className="advisory-body">{advisory.body}</p>
+            {advisory.actions.length > 0 && (
+              <ul className="advisory-actions">
+                {advisory.actions.map((action, i) => (
+                  <li key={i}>{action}</li>
+                ))}
+              </ul>
+            )}
+
+            {/* When the model could not write the language that was asked for,
+                say so. Handing someone English while implying it is their
+                language is the worse failure of the two. */}
+            {advisory.language !== advisory.requested_language && (
+              <p className="advisory-fallback-note">
+                This advisory could not be written reliably in{' '}
+                {LANGUAGE_LABELS[advisory.requested_language] || advisory.requested_language}, so it
+                is shown in {LANGUAGE_LABELS[advisory.language] || advisory.language} instead.
+              </p>
+            )}
+
+            {advisory.ai_generated ? (
+              <p className="advisory-ai-note">
+                Written by AI from the measurements above. AI can make mistakes — the
+                measurements and the official sources are the record.
+              </p>
+            ) : (
+              <p className="advisory-ai-note">
+                Standard safety guidance, written and reviewed by people. The AI writer was
+                unavailable.
+              </p>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {risk.indicators.length > 0 && (
@@ -144,101 +242,6 @@ export default function HazardDetail({ risk, location, onClose }) {
           </ul>
         </div>
       )}
-
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">What to do</div>
-          {loading && <span className="card-subtitle">Writing…</span>}
-        </div>
-
-        <div className="advisory-controls">
-          <div className="form-group">
-            <label className="form-label" htmlFor="hazard-role">
-              Written for
-            </label>
-            <select
-              id="hazard-role"
-              className="form-select"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              {ROLES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Only languages the backend says are actually spoken here. Offering
-              Somali in Peru would be worse than useless — it would push the
-              English version out of view. */}
-          {location.languages && location.languages.length > 1 && (
-            <div className="form-group">
-              <label className="form-label">Language</label>
-              <div className="lang-selector">
-                {location.languages.map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    className={`lang-btn ${language === code ? 'active' : ''}`}
-                    onClick={() => setLanguage(code)}
-                  >
-                    {LANGUAGE_LABELS[code] || code}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {error && (
-          <div className="notice notice--error" role="alert">
-            {error}
-          </div>
-        )}
-
-        {loading && !advisory ? (
-          <div className="loading-container">
-            <div className="spinner" />
-          </div>
-        ) : advisory ? (
-          <div className={`advisory-card advisory-card--${level}`}>
-            <h3 className="advisory-title">{advisory.title}</h3>
-            <p className="advisory-body">{advisory.body}</p>
-            {advisory.actions.length > 0 && (
-              <ul className="advisory-actions">
-                {advisory.actions.map((action, i) => (
-                  <li key={i}>{action}</li>
-                ))}
-              </ul>
-            )}
-
-            {/* When the model could not write the language that was asked for,
-                say so. Handing someone English while implying it is their
-                language is the worse failure of the two. */}
-            {advisory.language !== advisory.requested_language && (
-              <p className="advisory-fallback-note">
-                This advisory could not be written reliably in{' '}
-                {LANGUAGE_LABELS[advisory.requested_language] || advisory.requested_language}, so it
-                is shown in {LANGUAGE_LABELS[advisory.language] || advisory.language} instead.
-              </p>
-            )}
-
-            {advisory.ai_generated ? (
-              <p className="advisory-ai-note">
-                Written by AI from the measurements above. AI can make mistakes — the
-                measurements and the official sources are the record.
-              </p>
-            ) : (
-              <p className="advisory-ai-note">
-                Standard safety guidance, written and reviewed by people. The AI writer was
-                unavailable.
-              </p>
-            )}
-          </div>
-        ) : null}
-      </div>
 
       <div className="card hazard-sources">
         <div className="card-header">

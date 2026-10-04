@@ -5,9 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import HazardCard from '@/components/HazardCard';
 import HazardDetail from '@/components/HazardDetail';
 import LocationBar from '@/components/LocationBar';
-import OnboardingSplash from '@/components/OnboardingSplash';
 import { useToast } from '@/components/Toast';
-import { useAuth } from '@/lib/auth';
 import { MAP_STYLE_URL, RISK_COLORS } from '@/lib/constants';
 import {
   fetchHazardProfile,
@@ -52,7 +50,6 @@ export default function HazardDashboard() {
   const [mapReady, setMapReady] = useState(false);
   const [deferMap, setDeferMap] = useState(false);
 
-  const { user, loading: authLoading, isGuest, setGuest } = useAuth();
   const { notify } = useToast();
 
   // ── Location → profile ──────────────────────────────────────────────────
@@ -196,7 +193,6 @@ export default function HazardDashboard() {
   }, []);
 
   useEffect(() => {
-    if (authLoading || !(user || isGuest)) return;
     const tier = getDeviceTier();
     mapTier.current = tier;
     if (tier === TIERS.LOW) {
@@ -205,7 +201,7 @@ export default function HazardDashboard() {
       return;
     }
     return onIdle(() => initMap(), tier === TIERS.HIGH ? 800 : 2000);
-  }, [authLoading, user, isGuest, initMap]);
+  }, [initMap]);
 
   useEffect(
     () => () => {
@@ -294,28 +290,143 @@ export default function HazardDashboard() {
       .addTo(mapInstance.current);
   }, [location, profile, mapReady]);
 
+  // Escape closes the open hazard, and on phones — where the detail is a
+  // full-screen sheet — the page underneath must not scroll behind it.
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e) => e.key === 'Escape' && setSelected(null);
+    document.addEventListener('keydown', onKey);
+    const phone = window.matchMedia('(max-width: 768px)').matches;
+    if (phone) document.body.classList.add('sheet-open');
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.classList.remove('sheet-open');
+    };
+  }, [selected]);
+
   // ── Render ──────────────────────────────────────────────────────────────
+  //
+  // No sign-in gate. The dashboard used to open on a welcome card asking people
+  // to sign in or "continue as guest" — on every visit, because the choice was
+  // never remembered — before showing anything at all. Every feature here works
+  // signed out, so the first screen is now the one question that matters, and
+  // sign-in waits in the header for the people who want it.
 
-  if (authLoading) {
-    return (
-      <div className="loading-container" style={{ minHeight: '100vh' }}>
-        <div className="spinner" />
-        <span>Loading Tayari…</span>
-      </div>
-    );
-  }
-
-  if (!user && !isGuest) {
-    return <OnboardingSplash onGuestContinue={() => setGuest(true)} />;
-  }
+  const overall = profile?.overall_risk?.toLowerCase();
+  const top = profile?.hazards?.[0];
 
   return (
-    <div className="main-content">
-      <div className="map-container">
-        <div
-          ref={mapRef}
-          style={{ position: 'absolute', inset: 0, width: '100%' }}
-        />
+    <div className="main-content dashboard">
+      <section className="hazard-panel animate-fade-in" aria-label="Hazards at your location">
+        <LocationBar location={location} onSelect={handleSelectLocation} busy={loading} />
+
+        {!location && !loading && (
+          <div className="hazard-empty">
+            <h1 className="hazard-empty-title">What threatens where you are?</h1>
+            <p className="hazard-empty-text">
+              Tayari checks nine hazards — floods, earthquakes, tsunami, volcanoes, storms,
+              heat, wildfire, drought and landslides — against live data, then tells you what
+              to do about the ones that matter. Free, no account needed.
+            </p>
+            <p className="hazard-empty-hint">Or try one of these:</p>
+            <div className="example-places">
+              {EXAMPLE_PLACES.map((place) => (
+                <button
+                  key={place.name}
+                  type="button"
+                  className="chip"
+                  onClick={() => handleSelectLocation(place)}
+                >
+                  {place.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {loading && !profile && (
+          <div className="hazard-skeleton" aria-busy="true" aria-live="polite">
+            <span className="visually-hidden">Checking nine hazards…</span>
+            <div className="skeleton skeleton--banner" />
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="skeleton skeleton--card" />
+            ))}
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="notice notice--error" role="alert">
+            <p>{error}</p>
+            {location && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ marginTop: 8 }}
+                onClick={() => loadProfile(location)}
+              >
+                Try again
+              </button>
+            )}
+          </div>
+        )}
+
+        {profile && (
+          <>
+            <div
+              className={`hazard-summary hazard-summary--${overall}`}
+              role="status"
+              aria-live="polite"
+            >
+              <div className="hazard-summary-top">
+                <span className="hazard-summary-level">
+                  {RISK_WORDS[profile.overall_risk] || profile.overall_risk}
+                </span>
+                {loading && <span className="hazard-summary-busy">Updating…</span>}
+              </div>
+              <p className="hazard-summary-headline">{profile.headline}</p>
+              {top && top.risk_level !== 'LOW' && (
+                <button
+                  type="button"
+                  className="btn btn-sm hazard-summary-cta"
+                  onClick={() => setSelected(top)}
+                >
+                  What to do about {hazardMeta(top.hazard).short.toLowerCase()} →
+                </button>
+              )}
+              {profile.partial && (
+                <p className="hazard-summary-note">
+                  Some data feeds did not respond, so a hazard may be missing.
+                </p>
+              )}
+            </div>
+
+            <h2 className="hazard-list-title">
+              {profile.hazards.length} hazards checked · tap one for what to do
+            </h2>
+            <div className="hazard-list">
+              {profile.hazards.map((risk) => (
+                <HazardCard
+                  key={risk.hazard}
+                  risk={risk}
+                  active={selected?.hazard === risk.hazard}
+                  onSelect={setSelected}
+                />
+              ))}
+            </div>
+
+            {profile.screened_out.length > 0 && (
+              <p className="hazard-screened">
+                Not relevant here:{' '}
+                {profile.screened_out.map((h) => hazardMeta(h).short).join(', ')}. Tayari
+                checked and found no physical basis for these at this location.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
+      <div className="map-container" aria-label="Map of live earthquakes and volcanoes">
+        <div ref={mapRef} style={{ position: 'absolute', inset: 0, width: '100%' }} />
 
         {!mapReady && (
           <div className="map-placeholder">
@@ -339,83 +450,13 @@ export default function HazardDashboard() {
         )}
       </div>
 
-      <div className="hazard-panel animate-fade-in">
-          <LocationBar
-            location={location}
-            onSelect={handleSelectLocation}
-            busy={loading}
-          />
-
-          {!location && !loading && (
-            <div className="hazard-empty">
-              <h1 className="hazard-empty-title">What threatens where you are?</h1>
-              <p className="hazard-empty-text">
-                Tayari checks nine hazards — flooding, earthquakes, tsunami, volcanic activity,
-                storms, heat, wildfire, drought and landslides — against live data from USGS,
-                the Smithsonian Global Volcanism Program, Copernicus and Open-Meteo, then
-                explains what to do about the ones that matter.
-              </p>
-              <p className="hazard-empty-text">
-                Share your location or search for a place to begin.
-              </p>
-            </div>
-          )}
-
-          {loading && !profile && (
-            <div className="loading-container">
-              <div className="spinner" />
-              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
-                Checking nine hazards…
-              </span>
-            </div>
-          )}
-
-          {error && !loading && (
-            <div className="notice notice--error" role="alert">
-              {error}
-            </div>
-          )}
-
-          {profile && (
-            <>
-              <div className="hazard-summary">
-                <span
-                  className={`risk-badge risk-badge--${profile.overall_risk.toLowerCase()}`}
-                >
-                  {profile.overall_risk}
-                </span>
-                <p className="hazard-summary-headline">{profile.headline}</p>
-                {profile.partial && (
-                  <p className="hazard-summary-note">
-                    One or more data feeds did not respond, so some hazards may be missing.
-                  </p>
-                )}
-              </div>
-
-              <div className="hazard-list">
-                {profile.hazards.map((risk) => (
-                  <HazardCard
-                    key={risk.hazard}
-                    risk={risk}
-                    active={selected?.hazard === risk.hazard}
-                    onSelect={setSelected}
-                  />
-                ))}
-              </div>
-
-              {profile.screened_out.length > 0 && (
-                <p className="hazard-screened">
-                  Not relevant here:{' '}
-                  {profile.screened_out.map((h) => hazardMeta(h).short).join(', ')}. Tayari
-                  checked and found no physical basis for these at this location.
-                </p>
-            )}
-          </>
-        )}
-      </div>
-
       {selected && profile && (
-        <div className="side-panel">
+        <div
+          className="side-panel"
+          role="dialog"
+          aria-modal="false"
+          aria-label={`${hazardMeta(selected.hazard).label} details`}
+        >
           <HazardDetail
             risk={selected}
             location={{ ...profile.location, languages: profile.languages }}
@@ -426,6 +467,25 @@ export default function HazardDashboard() {
     </div>
   );
 }
+
+// Plain words for the overall level. A bare "LOW" badge reads as a label, not
+// an answer; the banner should say the answer.
+const RISK_WORDS = {
+  LOW: 'All clear for now',
+  MODERATE: 'Stay alert',
+  HIGH: 'Take action',
+  EXTREME: 'Act now — danger',
+};
+
+// One-tap starting points for someone who just wants to see what this does,
+// spread across the hazards and the regions Tayari was built for.
+const EXAMPLE_PLACES = [
+  { name: 'Beledweyne', country: 'Somalia', country_code: 'so', latitude: 4.74, longitude: 45.2 },
+  { name: 'Nairobi', country: 'Kenya', country_code: 'ke', latitude: -1.2864, longitude: 36.8172 },
+  { name: 'Jakarta', country: 'Indonesia', country_code: 'id', latitude: -6.2088, longitude: 106.8456 },
+  { name: 'Manila', country: 'Philippines', country_code: 'ph', latitude: 14.5995, longitude: 120.9842 },
+  { name: 'Naples', country: 'Italy', country_code: 'it', latitude: 40.8518, longitude: 14.2681 },
+];
 
 function escapeHtml(str) {
   return String(str)

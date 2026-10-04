@@ -102,6 +102,8 @@ graph TD
 
 **Nine hazards cost seven upstream calls, not sixty-three.** Most of them are different questions asked of the same observations — the rainfall driving a flood also drives a landslide and, by its absence, a drought — so the context is gathered once, concurrently, and every assessor reads from it. Caching is tiered by how fast each truth moves: seismic history for a day, live earthquakes for three minutes.
 
+**A cold profile answers in about a second.** The slowest feed sets the pace of a concurrent gather, and it used to be a per-location USGS radius query that took around eight seconds. Recent earthquakes now come from USGS's 30-day summary feed — one ~170 KB CDN-cached file for the whole planet, fetched once per cache window and filtered in memory, with the per-point query kept as a fallback — and the global feeds are warmed at startup so the first visitor after a cold start does not pay for them.
+
 **One dead feed costs one card, never the page.** Assessors are pure functions that return `None` when a hazard is not physically relevant, and a failing feed degrades its own hazards in isolation.
 
 **No bundled geodata.** Coastal distance and slope come from sampling a digital elevation model at 37 points around the location in a single request — a sample at or below sea level is ocean. A coastline shapefile would have been hundreds of megabytes on a 512 MB container.
@@ -165,10 +167,10 @@ cd frontend
 npm install
 npm run dev
 ```
-Head over to `http://localhost:3000` and you should see the MapLibre dashboard lighting up with live basin data!
+Head over to `http://localhost:3000` — the dashboard opens straight onto "What threatens where you are?". Share your location, search a town, or tap an example place.
 
 ### Running the Mobile App (Flutter)
-The native mobile app is optimized for low-bandwidth environments, featuring offline maps, aggressive photo compression, and local caching of multilingual advisories. Prefer not to build it yourself? Grab the APK from [GitHub Releases](https://github.com/Raul909/Tayari/releases).
+The native mobile app opens on the same nine-hazard *My area* view as the web, with *Basins*, *Reports* and *Settings* as bottom tabs. It is built for low-bandwidth environments: the last result is cached and shown offline, photos are compressed aggressively, and reports queue until there is a connection. Prefer not to build it yourself? Grab the APK from [GitHub Releases](https://github.com/Raul909/Tayari/releases).
 ```bash
 cd tayari_mobile
 flutter pub get
@@ -188,7 +190,7 @@ I chose tools that are fast, reliable, and perfectly suited for a machine-learni
 - **Databases:** Supabase (managed Postgres) for the shared backend store & auth, and Isar — *ultra-fast offline-first NoSQL caching for the mobile app.*
 - **Hazard engine:** Pure-Python scoring over live feeds — *a calibrated multi-factor flood model, USGS seismicity statistics, Chandler Burning Index, rainfall percentiles against local climatology. Transparent, explainable, no model artifact to ship, and every number traceable to a public source.*
 - **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
-- **Data feeds:** USGS FDSN, Smithsonian Global Volcanism Program, Copernicus GloFAS & DEM, Open-Meteo — *all public, all keyless, no vendor lock-in on the thing that matters most.*
+- **Data feeds:** USGS (FDSN catalog + the 30-day summary feed), Smithsonian Global Volcanism Program, Copernicus GloFAS & DEM, Open-Meteo — *all public, all keyless, no vendor lock-in on the thing that matters most.*
 - **AI & Comms:** Groq API (Llama 3.3 70B) & Twilio — *Multilingual generation with a translation-quality guard, and reliable SMS delivery.*
 - **Hosting:** Cloudflare Pages (web, free at [tayari.pages.dev](https://tayari.pages.dev)), Render (API), and a Cloudflare Worker for proxying + keep-alive.
 

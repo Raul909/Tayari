@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { fetchHazardTypes, fetchLiveEvents, hazardMeta, ONSET_LABELS } from '@/lib/hazards';
 import { BASINS } from '@/lib/constants';
@@ -22,6 +22,16 @@ export default function HazardsPage() {
   const [events, setEvents] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const detailRef = useRef(null);
+
+  // On a phone the detail renders under the full grid of nine tiles, so a tap
+  // looked like it had done nothing. Bring it into view.
+  useEffect(() => {
+    if (!selected || !detailRef.current) return;
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      detailRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selected]);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,7 +108,9 @@ export default function HazardsPage() {
           </div>
 
           {selected ? (
-            <HazardDetailPanel hazard={selected} events={events} />
+            <div ref={detailRef} style={{ scrollMarginTop: 72 }}>
+              <HazardDetailPanel hazard={selected} events={events} />
+            </div>
           ) : (
             <div className="card hazard-guide-empty">
               <p>

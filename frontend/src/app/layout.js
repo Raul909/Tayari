@@ -1,6 +1,5 @@
 import './globals.css';
 import Navbar from '@/components/Navbar';
-import MapPreloader from '@/components/MapPreloader';
 import { ToastProvider } from '@/components/Toast';
 import { AuthProvider } from '@/lib/auth';
 
@@ -54,11 +53,15 @@ export default function RootLayout({ children }) {
       <body>
         <AuthProvider>
           <ToastProvider>
+            <a href="#main" className="skip-link">
+              Skip to content
+            </a>
             <div className="app-layout">
               <Navbar />
-              {children}
+              <main id="main" className="app-main">
+                {children}
+              </main>
             </div>
-            <MapPreloader />
           </ToastProvider>
         </AuthProvider>
       </body>

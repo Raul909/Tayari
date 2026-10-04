@@ -12,7 +12,7 @@ import { detectLocation, placeLabel, searchPlaces } from '@/lib/hazards';
  * than their own — that treating search as the fallback would leave a lot of
  * people at a dead end.
  */
-export default function LocationBar({ location, onSelect, busy }) {
+export default function LocationBar({ location, onSelect, busy, currentLabel = 'Showing' }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -105,9 +105,19 @@ export default function LocationBar({ location, onSelect, busy }) {
           <input
             type="search"
             className="form-input location-search-input"
-            placeholder="Search any town, city or district…"
+            placeholder="Search a town or city…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter takes the top match — the obvious intent when someone
+              // types a name and presses return, rather than a dead keypress.
+              if (e.key === 'Enter' && results.length) {
+                e.preventDefault();
+                handlePick(results[0]);
+              } else if (e.key === 'Escape') {
+                setOpen(false);
+              }
+            }}
             onFocus={() => results.length && setOpen(true)}
             aria-label="Search for a place"
             autoComplete="off"
@@ -115,7 +125,7 @@ export default function LocationBar({ location, onSelect, busy }) {
           {searching && <span className="location-search-spinner" aria-hidden="true" />}
 
           {open && results.length > 0 && (
-            <ul className="location-results" role="listbox">
+            <ul className="location-results">
               {results.map((place) => (
                 <li key={`${place.latitude},${place.longitude},${place.name}`}>
                   <button type="button" onClick={() => handlePick(place)}>
@@ -132,16 +142,21 @@ export default function LocationBar({ location, onSelect, busy }) {
 
         <button
           type="button"
-          className="btn btn-ghost location-detect"
+          className={`btn ${location ? 'btn-ghost' : 'btn-primary'} location-detect`}
           onClick={handleDetect}
           disabled={detecting || busy}
         >
-          {detecting ? 'Locating…' : '📍 Use my location'}
+          {detecting ? 'Locating…' : (
+            <>
+              <span aria-hidden="true">📍</span> Use my location
+            </>
+          )}
         </button>
       </div>
 
       {location && (
         <div className="location-current">
+          <span className="location-current-label">{currentLabel}</span>
           <strong>{placeLabel(location)}</strong>
           {busy && <span className="location-current-busy">Assessing hazards…</span>}
         </div>

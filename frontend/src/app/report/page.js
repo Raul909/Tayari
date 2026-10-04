@@ -10,58 +10,42 @@ import {
 } from '@/lib/api';
 import { BASINS, REPORT_STATUSES } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
+import LocationBar from '@/components/LocationBar';
+import { loadLocation } from '@/lib/hazards';
 
 export default function ReportPage() {
-  const [basinId, setBasinId] = useState('shabelle');
+  const [place, setPlace] = useState(null);
   const [status, setStatus] = useState('water_rising');
   const [description, setDescription] = useState('');
   const [reporterName, setReporterName] = useState('');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
   const [feedBasin, setFeedBasin] = useState('all');
-  const [geoError, setGeoError] = useState(null);
-  const [locating, setLocating] = useState(false);
   const photoInputRef = useRef(null);
 
   const { notify } = useToast();
 
+  // Start from the place the visitor last looked at, and never pop a location
+  // permission prompt on page load. This page used to ask the moment it opened
+  // and, on refusal, silently filled in Beledweyne — so a report from anywhere
+  // else could be pinned to the wrong country without the reporter noticing.
   useEffect(() => {
-    loadReports();
-    getLocation();
+    const saved = loadLocation();
+    // Reading localStorage is the external-system sync this rule allows.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved) setPlace(saved);
+    fetchReports()
+      .then(setReports)
+      .catch((err) => console.error('Failed to load reports:', err))
+      .finally(() => setReportsLoading(false));
   }, []);
-
-  function getLocation() {
-    if ('geolocation' in navigator) {
-      setLocating(true);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLatitude(pos.coords.latitude.toFixed(6));
-          setLongitude(pos.coords.longitude.toFixed(6));
-          setGeoError(null);
-          setLocating(false);
-        },
-        () => {
-          setGeoError('Location access denied — enter coordinates manually.');
-          // Fall back to Beledweyne so the field is never empty.
-          setLatitude('4.74');
-          setLongitude('45.20');
-          setLocating(false);
-        }
-      );
-    } else {
-      setLatitude('4.74');
-      setLongitude('45.20');
-    }
-  }
 
   async function loadReports() {
     try {
-      const data = await fetchReports();
-      setReports(data);
+      setReports(await fetchReports());
     } catch (err) {
       console.error('Failed to load reports:', err);
     }
@@ -84,14 +68,24 @@ export default function ReportPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!place) {
+      notify({
+        type: 'error',
+        title: 'Where is this?',
+        message: 'Use your location or search for the place before sending.',
+      });
+      return;
+    }
     setSubmitting(true);
 
     try {
       const fields = {
-        basin_id: basinId,
+        // Reports are still grouped by river basin on the server; the reporter
+        // should not have to know which one they are in.
+        basin_id: nearestBasin(place.latitude, place.longitude).id,
         status,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
+        latitude: place.latitude,
+        longitude: place.longitude,
         description: description || null,
         reporter_name: reporterName || null,
       };
@@ -100,14 +94,14 @@ export default function ReportPage() {
         : await submitReport(fields);
       notify({
         type: 'success',
-        title: 'Report submitted',
-        message: `Report #${report.id} recorded. It now shows on the dashboard map.`,
+        title: 'Report sent — thank you',
+        message: `Report #${report.id} is now visible to coordinators and neighbours.`,
       });
       setDescription('');
       clearPhoto();
       loadReports();
     } catch (err) {
-      notify({ type: 'error', title: 'Could not submit', message: err.message });
+      notify({ type: 'error', title: 'Could not send', message: err.message });
     } finally {
       setSubmitting(false);
     }
@@ -126,59 +120,42 @@ export default function ReportPage() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1 className="page-title">Community reports</h1>
+        <h1 className="page-title">Report what you see</h1>
         <p className="page-description">
-          Report ground conditions from the field, see what others are reporting, and respond
-          with advice. Reports appear as pins on the dashboard map and serve as ground truth
-          for the forecasts.
+          Tell others what is happening on the ground. Your report — and any photo — is shared
+          with coordinators and neighbours, who can reply with advice.
         </p>
       </div>
 
       <div className="grid-2col">
         <div className="card" style={{ alignSelf: 'start' }}>
-          <div className="card-header">
-            <div className="card-title">Submit a report</div>
-          </div>
+          <form onSubmit={handleSubmit} className="report-form">
+            <fieldset className="report-step">
+              <legend className="report-step-title">
+                <span className="report-step-num">1</span> Where are you?
+              </legend>
+              <LocationBar
+                location={place}
+                onSelect={setPlace}
+                busy={false}
+                currentLabel="Reporting from"
+              />
+            </fieldset>
 
-          <form
-            onSubmit={handleSubmit}
-            style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
-          >
-            <div className="form-group">
-              <label className="form-label" htmlFor="r-basin">Basin</label>
-              <select
-                id="r-basin"
-                className="form-select"
-                value={basinId}
-                onChange={(e) => setBasinId(e.target.value)}
-              >
-                {Object.values(BASINS).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Current situation</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <fieldset className="report-step">
+              <legend className="report-step-title">
+                <span className="report-step-num">2</span> What is happening?
+              </legend>
+              <div className="status-options">
                 {REPORT_STATUSES.map((s) => {
                   const active = status === s.value;
                   return (
                     <button
                       key={s.value}
                       type="button"
-                      className="btn btn-sm"
-                      style={
-                        active
-                          ? { background: s.color, color: '#fff', borderColor: s.color }
-                          : {
-                              background: 'var(--surface)',
-                              color: 'var(--text-secondary)',
-                              borderColor: 'var(--border-strong)',
-                            }
-                      }
+                      className={`status-option ${active ? 'active' : ''}`}
+                      style={{ '--status-color': s.color }}
+                      aria-pressed={active}
                       onClick={() => setStatus(s.value)}
                     >
                       {s.label}
@@ -186,10 +163,14 @@ export default function ReportPage() {
                   );
                 })}
               </div>
-            </div>
+            </fieldset>
 
-            <div className="form-group">
-              <label className="form-label">Photo of the conditions (optional)</label>
+            <fieldset className="report-step">
+              <legend className="report-step-title">
+                <span className="report-step-num">3</span> Add details{' '}
+                <span className="report-step-optional">optional</span>
+              </legend>
+
               <input
                 ref={photoInputRef}
                 type="file"
@@ -197,21 +178,12 @@ export default function ReportPage() {
                 capture="environment"
                 onChange={handlePhotoChange}
                 style={{ display: 'none' }}
+                aria-label="Photo of the conditions"
               />
               {photoPreview ? (
-                <div style={{ position: 'relative' }}>
+                <div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photoPreview}
-                    alt="Report preview"
-                    style={{
-                      width: '100%',
-                      maxHeight: '220px',
-                      objectFit: 'cover',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-color)',
-                    }}
-                  />
+                  <img src={photoPreview} alt="Your photo" className="report-photo-preview" />
                   <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                     <button
                       type="button"
@@ -228,101 +200,63 @@ export default function ReportPage() {
               ) : (
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className="btn btn-ghost report-photo-btn"
                   onClick={() => photoInputRef.current?.click()}
-                  style={{
-                    border: '1px dashed var(--border-strong)',
-                    padding: '18px',
-                    width: '100%',
-                  }}
                 >
-                  📷 Take or choose a photo
+                  <span aria-hidden="true">📷</span> Take or choose a photo
                 </button>
               )}
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div className="form-group">
-                <label className="form-label" htmlFor="lat">Latitude</label>
-                <input
-                  id="lat"
-                  className="form-input"
-                  type="number"
-                  step="0.000001"
-                  value={latitude}
-                  onChange={(e) => setLatitude(e.target.value)}
-                  required
+                <label className="form-label" htmlFor="desc">
+                  What do you see?
+                </label>
+                <textarea
+                  id="desc"
+                  className="form-textarea"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="e.g. Water is over the road by the market bridge"
+                  rows={3}
                 />
               </div>
+
               <div className="form-group">
-                <label className="form-label" htmlFor="lng">Longitude</label>
+                <label className="form-label" htmlFor="reporter">
+                  Your name
+                </label>
                 <input
-                  id="lng"
+                  id="reporter"
                   className="form-input"
-                  type="number"
-                  step="0.000001"
-                  value={longitude}
-                  onChange={(e) => setLongitude(e.target.value)}
-                  required
+                  type="text"
+                  autoComplete="name"
+                  value={reporterName}
+                  onChange={(e) => setReporterName(e.target.value)}
+                  placeholder="e.g. Ahmed"
                 />
               </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={getLocation}
-                disabled={locating}
-              >
-                {locating ? 'Locating…' : 'Use my location'}
-              </button>
-              {geoError && (
-                <span style={{ fontSize: '12px', color: 'var(--risk-moderate)' }}>
-                  {geoError}
-                </span>
-              )}
-            </div>
+            </fieldset>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="reporter">Your name (optional)</label>
-              <input
-                id="reporter"
-                className="form-input"
-                type="text"
-                value={reporterName}
-                onChange={(e) => setReporterName(e.target.value)}
-                placeholder="e.g. Ahmed"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="desc">Description (optional)</label>
-              <textarea
-                id="desc"
-                className="form-textarea"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe what you're seeing…"
-                rows={3}
-              />
-            </div>
-
-            <button className="btn btn-primary btn-lg" type="submit" disabled={submitting}>
-              {submitting ? 'Submitting…' : 'Submit report'}
+            <button
+              className="btn btn-primary btn-lg"
+              type="submit"
+              disabled={submitting || !place}
+            >
+              {submitting ? 'Sending…' : place ? 'Send report' : 'Choose a place to send'}
             </button>
           </form>
         </div>
 
         <div className="card" style={{ alignSelf: 'start' }}>
           <div className="card-header">
-            <div className="card-title">Reports from the field</div>
+            <h2 className="card-title">Recent reports</h2>
             <select
-              className="form-select"
+              className="form-select report-feed-filter"
               value={feedBasin}
               onChange={(e) => setFeedBasin(e.target.value)}
-              style={{ width: 'auto', fontSize: '12px', padding: '4px 8px' }}
+              aria-label="Filter reports by area"
             >
-              <option value="all">All basins</option>
+              <option value="all">All areas</option>
               {Object.values(BASINS).map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -331,8 +265,12 @@ export default function ReportPage() {
             </select>
           </div>
 
-          {visibleReports.length === 0 ? (
-            <div className="empty-state">No community reports yet. Be the first to report.</div>
+          {reportsLoading ? (
+            <div className="loading-container">
+              <div className="spinner" />
+            </div>
+          ) : visibleReports.length === 0 ? (
+            <div className="empty-state">No reports here yet. Be the first to report.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {visibleReports.map((r) => (
@@ -349,6 +287,20 @@ export default function ReportPage() {
       </div>
     </div>
   );
+}
+
+/** The calibrated basin closest to a point — reports are grouped by it. */
+function nearestBasin(latitude, longitude) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const basin of Object.values(BASINS)) {
+    const d = (basin.lat - latitude) ** 2 + (basin.lng - longitude) ** 2;
+    if (d < bestDist) {
+      best = basin;
+      bestDist = d;
+    }
+  }
+  return best;
 }
 
 function ReportCard({ report, onUpdated, notify }) {

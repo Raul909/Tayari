@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'providers/prefs_provider.dart';
 import 'services/auth_service.dart';
-import 'ui/screens/dashboard_screen.dart';
+import 'ui/home_shell.dart';
 import 'ui/theme.dart';
 
 /// Public Supabase project — the same client URL + publishable key the web
@@ -66,7 +66,7 @@ class TayariApp extends StatelessWidget {
       title: 'Tayari',
       debugShowCheckedModeBanner: false,
       theme: buildTayariTheme(),
-      home: const DashboardScreen(),
+      home: const HomeShell(),
     );
   }
 }
