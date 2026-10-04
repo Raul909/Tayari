@@ -2470,8 +2470,11 @@ tr:hover td { background: var(--surface-sunken); }
   }
 
   .tabbar-item.active {
-    color: var(--accent);
+    /* accent-hover, not accent: the lighter terracotta measured 4.2:1 on the
+       tinted background, just under AA for 11px text. */
+    color: var(--accent-hover);
     background: var(--accent-soft);
+    font-weight: 600;
   }
 
   .tabbar-icon {

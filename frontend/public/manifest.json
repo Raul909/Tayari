@@ -1,8 +1,9 @@
 {
-  "name": "Tayari — Flood Early Warning",
+  "name": "Tayari — Multi-Hazard Early Warning",
   "short_name": "Tayari",
   "description": "AI-powered multi-hazard early warning & early action system for anywhere on Earth",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#faf9f6",
   "theme_color": "#faf9f6",
