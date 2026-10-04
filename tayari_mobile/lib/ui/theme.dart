@@ -10,7 +10,9 @@ class AppColors {
 
   static const textPrimary = Color(0xFF23211C);
   static const textSecondary = Color(0xFF6B6558);
-  static const textMuted = Color(0xFF938C7E);
+  // Darkened from #938C7E, which was ~3.3:1 on white — below the 4.5:1
+  // needed to read small text outdoors on a dim phone screen.
+  static const textMuted = Color(0xFF736C5F);
 
   static const accent = Color(0xFFB7562F);
 
@@ -21,6 +23,11 @@ class AppColors {
   static const riskModerate = Color(0xFFB0812C);
   static const riskHigh = Color(0xFFC0432B);
   static const riskExtreme = Color(0xFF83291A);
+
+  /// Risk colour for *text*. Amber on a pale tint is too light to read, so
+  /// moderate text uses a darker shade of the same hue.
+  static Color riskText(String? level) =>
+      (level ?? '').toUpperCase() == 'MODERATE' ? const Color(0xFF7F5C1D) : risk(level);
 
   /// Map a backend risk level string to its colour.
   static Color risk(String? level) {
