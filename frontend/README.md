@@ -14,12 +14,18 @@ the backend over `NEXT_PUBLIC_API_URL`.
 The app opens on a **location**, not on a river. You give it a place, and it
 answers what threatens you there and what to do about it.
 
-- **My area (`/`)** — the multi-hazard dashboard. Search a place (or share your
-  location) and Tayari scores nine hazards for that coordinate: river flooding,
+- **My area (`/`)** — the multi-hazard dashboard, and the first screen anyone
+  sees: no sign-in gate. Share your location, search a place (Enter picks the
+  top match), or tap one of the example places, and Tayari scores nine hazards
+  for that coordinate: river flooding,
   earthquake, tsunami, volcanic activity, cyclone & severe storm, extreme heat,
   wildfire weather, drought and landslide. Each hazard is a card carrying its own
-  risk level and reasoning; selecting one opens a detail panel with the numbers
-  behind it and role- and language-tailored advisories. Hazards with no physical
+  risk level and reasoning, under a plain-words summary banner (*All clear for
+  now*, *Stay alert*, *Take action*) that links straight to what to do about the
+  most urgent one. Selecting a hazard opens its detail — the advisory for your
+  role and language first, then the numbers behind it. On phones the list comes
+  before the map, and the detail is a full-screen sheet with a pinned back
+  button; Escape closes it on desktop. Hazards with no physical
   basis at that location are screened out and listed separately, so a landlocked
   town never sees a tsunami card. A MapLibre map alongside shows the pin for your
   location plus live worldwide earthquakes (M4.5+, last 7 days) and erupting
@@ -35,9 +41,11 @@ answers what threatens you there and what to do about it.
   whether that hazard is even relevant there before generating a live SMS preview
   in the chosen role and language. Signing in from the page header attaches your
   token to the send, which is what puts it in the alert history listed underneath.
-- **Report (`/report`)** — submit geotagged community flood reports with an
-  optional photo, and read the report feed with its advice threads. Reports are
-  filed against one of the eight basins and appear as pins on the basin map.
+- **Report (`/report`)** — a three-step form (where, what is happening, optional
+  photo and details) and the report feed with its advice threads. The place is
+  picked with the same search / "use my location" control as the dashboard, and
+  location is never requested on page load. Reports are still grouped by basin
+  server-side; the nearest one is derived from the coordinates.
 - **Basins (`/basins`)** — the original eight-basin flood dashboard: risk
   markers, a risk gauge, a 7-day discharge chart, an impact assessment and
   advisories. Still the more trustworthy answer where it applies, because those
@@ -51,8 +59,8 @@ answers what threatens you there and what to do about it.
 
 Navigation is a top bar on desktop and a fixed bottom tab bar on phones (four
 destinations don't fit across a 360 px viewport without clipping). Auth is
-Supabase: you can sign in, or continue as a guest from the onboarding splash and
-use the app without an account. Signing in is what ties sent alerts to you.
+Supabase and entirely optional — every page works signed out, and "Sign in" sits
+in the header. Signing in is what ties sent alerts to you.
 
 ### Built for slow phones and metered data
 
@@ -63,13 +71,28 @@ core count and the Network Information API:
 
 | Tier | Behaviour |
 |---|---|
-| `high` | Full experience; the map bundle is warmed during idle time |
-| `mid` | Map loads after first paint, no idle warm |
+| `high` | Full experience; the map loads shortly after first paint |
+| `mid` | Map loads once the page is idle |
 | `low` (low-RAM / 2G / Save-Data) | Map is **not** downloaded — the user opts in with a tap |
 
 Chart.js is dynamically imported so it never reaches a first paint that doesn't
 need it, cross-origin origins (tiles, API, Supabase) are preconnected from the
 document head, and the UI uses system fonts so nothing blocks first paint.
+MapLibre is only ever requested by the dashboard — it used to be warmed from
+every route, which cost each page ~270 KB of script it never ran.
+
+`public/_headers` tells Cloudflare Pages to serve the content-hashed
+`/_next/static/*` files as immutable for a year, so repeat visits skip those
+requests entirely.
+
+Mobile Lighthouse on the static build (October 2026):
+
+| Page | Performance | Accessibility | LCP |
+|---|---|---|---|
+| `/` | 95–97 (was 85) | 100 (was 95) | 2.3 s (was 4.5 s) |
+| `/report` | 99 (was 83) | 100 (was 88) | 2.2 s (was 4.6 s) |
+| `/alerts` | 95–96 (was 85) | 100 (was 94) | 2.9 s (was 4.5 s) |
+| `/hazards` | 99 | 100 (was 93) | 2.2 s |
 
 ## Getting started
 
