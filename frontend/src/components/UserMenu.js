@@ -57,15 +57,19 @@ export default function UserMenu() {
 
   return (
     <div className="user-menu" ref={menuRef} onMouseLeave={handleMouseLeave} onMouseEnter={handleMouseEnter}>
-      <div 
-        className="user-avatar" 
+      <button
+        type="button"
+        className="user-avatar"
         onClick={() => setShowDropdown(!showDropdown)}
+        aria-haspopup="menu"
+        aria-expanded={showDropdown}
+        aria-label="Account menu"
       >
         {initial}
-      </div>
+      </button>
       
       {showDropdown && (
-        <div className="user-dropdown">
+        <div className="user-dropdown" role="menu">
           <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-color)', marginBottom: '4px' }}>
             <div style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>
               {user.user_metadata?.display_name || 'User'}
@@ -77,20 +81,16 @@ export default function UserMenu() {
           
           <button
             className="user-dropdown-item"
-            onClick={() => notify({ type: 'info', title: 'Saved Basins', message: 'Coming soon.' })}
-          >
-            Saved Basins
-          </button>
-          <button
-            className="user-dropdown-item"
-            onClick={() => notify({ type: 'info', title: 'Preferences', message: 'Coming soon.' })}
-          >
-            Preferences
-          </button>
-          <button 
-            className="user-dropdown-item" 
-            style={{ color: 'var(--risk-high)', marginTop: '4px', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}
-            onClick={logout}
+            role="menuitem"
+            style={{ color: 'var(--risk-high)' }}
+            onClick={async () => {
+              setShowDropdown(false);
+              try {
+                await logout();
+              } catch (e) {
+                notify({ type: 'error', title: 'Could not sign out', message: e.message });
+              }
+            }}
           >
             Sign out
           </button>

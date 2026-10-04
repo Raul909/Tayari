@@ -12,7 +12,7 @@ import { detectLocation, placeLabel, searchPlaces } from '@/lib/hazards';
  * than their own — that treating search as the fallback would leave a lot of
  * people at a dead end.
  */
-export default function LocationBar({ location, onSelect, busy }) {
+export default function LocationBar({ location, onSelect, busy, currentLabel = 'Showing' }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -156,7 +156,7 @@ export default function LocationBar({ location, onSelect, busy }) {
 
       {location && (
         <div className="location-current">
-          <span className="location-current-label">Showing</span>
+          <span className="location-current-label">{currentLabel}</span>
           <strong>{placeLabel(location)}</strong>
           {busy && <span className="location-current-busy">Assessing hazards…</span>}
         </div>

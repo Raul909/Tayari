@@ -1357,6 +1357,8 @@ tr:hover td { background: var(--surface-sunken); }
   font-weight: bold;
   font-size: 14px;
   cursor: pointer;
+  border: none;
+  font-family: inherit;
 }
 
 .user-dropdown {
@@ -2696,4 +2698,94 @@ tr:hover td { background: var(--surface-sunken); }
   align-self: flex-start;
   min-height: 44px;
   box-shadow: var(--shadow-md);
+}
+
+/* ─── Report form ───────────────────────────────────────────────────────── */
+
+.report-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.report-step {
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.report-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.report-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+}
+
+.report-step-optional {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.status-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.status-option {
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid var(--status-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.status-option.active {
+  border-color: var(--status-color);
+  background: color-mix(in srgb, var(--status-color) 14%, white);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--status-color);
+}
+
+.report-photo-btn {
+  border: 1px dashed var(--border-strong);
+  padding: 18px;
+  width: 100%;
+}
+
+.report-photo-preview {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.report-feed-filter {
+  width: auto;
+  font-size: 13px;
+  padding: 6px 8px;
 }
