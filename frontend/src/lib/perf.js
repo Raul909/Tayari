@@ -8,9 +8,9 @@
  * a 2G/Save-Data connection — exactly the user this app exists for. So we grade
  * each visitor into a tier and adapt how (and whether) we auto-load the map:
  *
- *   high — desktop / recent phones on good networks. Full experience, and we
- *          warm the map bundle during idle time so it renders instantly.
- *   mid  — average phones / 3G. Load the map after first paint, no idle warm.
+ *   high — desktop / recent phones on good networks. Full experience; the
+ *          map loads shortly after first paint.
+ *   mid  — average phones / 3G. Load the map later, once the page is idle.
  *   low  — low-RAM / 2G / Save-Data. Don't auto-download the map at all; let the
  *          user opt in with a tap so we never spend a metered byte uninvited.
  */
@@ -93,32 +93,14 @@ export function onIdle(cb, timeout = 2000) {
 
 let mapModulePromise = null;
 /**
- * Import maplibre-gl once and share the promise. Both the idle warm-up and the
- * dashboard's own init call this, so the 1.2 MB module is fetched a single time
- * no matter which fires first.
+ * Import maplibre-gl once and share the promise, so the 1.2 MB module is
+ * fetched a single time however many times the dashboard mounts. It is only
+ * ever requested by the dashboard: warming it from every route cost each page
+ * ~270 KB of script that nothing on it used.
  */
 export function loadMapLibrary() {
   if (!mapModulePromise) {
     mapModulePromise = import('maplibre-gl').then((m) => m.default || m);
   }
   return mapModulePromise;
-}
-
-let warmed = false;
-/**
- * Warm the map bundle (and prime the HTTP cache for the style descriptor) during
- * idle time, so the first real map render is instant — useful while the visitor
- * reads the onboarding splash or sits on the Alerts/Report pages. Skipped on the
- * low tier so we never download a megabyte the user didn't ask for.
- */
-export function warmMap(styleUrl) {
-  if (warmed || typeof window === 'undefined') return;
-  if (getDeviceTier() === TIERS.LOW) return;
-  warmed = true;
-  onIdle(() => {
-    loadMapLibrary().catch(() => {});
-    if (styleUrl) {
-      fetch(styleUrl, { mode: 'cors' }).catch(() => {});
-    }
-  }, 3000);
 }

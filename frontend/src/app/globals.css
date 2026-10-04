@@ -15,7 +15,7 @@
   /* ── Text ── */
   --text-primary: #23211c;    /* warm near-black */
   --text-secondary: #6b6558;
-  --text-muted: #938c7e;
+  --text-muted: #736c5f;    /* 4.9:1 on white — passes WCAG AA */
 
   /* ── Accent (used sparingly) ── */
   --accent: #b7562f;          /* terracotta */
@@ -1389,106 +1389,6 @@ tr:hover td { background: var(--surface-sunken); }
   color: var(--text-primary);
 }
 
-/* ─── Onboarding Splash ────────────────────────────────────────────── */
-
-.onboarding-splash {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  padding: 20px;
-}
-
-.onboarding-content {
-  background: var(--surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  max-width: 480px;
-  width: 100%;
-  padding: 40px 32px;
-  position: relative;
-  box-shadow: var(--shadow-md);
-}
-
-.onboarding-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: none;
-  border: none;
-  font-size: 28px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-}
-
-.onboarding-close:hover {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-}
-
-.onboarding-header {
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.onboarding-title {
-  font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.onboarding-subtitle {
-  font-size: 14px;
-  color: var(--accent);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.onboarding-body {
-  font-size: 15px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  text-align: center;
-  margin-bottom: 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.onboarding-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-@media (max-width: 480px) {
-  .onboarding-content {
-    padding: 32px 20px;
-  }
-  
-  .onboarding-title {
-    font-size: 24px;
-  }
-  
-  .onboarding-body {
-    font-size: 14px;
-  }
-}
-
 /* ─── Alert Sign-In Banner ─────────────────────────────────────────── */
 
 .alert-signin-banner {
@@ -1860,6 +1760,11 @@ tr:hover td { background: var(--surface-sunken); }
   color: var(--text-primary);
 }
 
+.location-current-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .location-current-busy {
   font-size: 12px;
   color: var(--text-muted);
@@ -1893,23 +1798,65 @@ tr:hover td { background: var(--surface-sunken); }
 /* ── Profile summary ── */
 
 .hazard-summary {
-  border-top: 1px solid var(--border-color);
-  padding-top: 12px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius);
+  border-left: 5px solid var(--risk-low);
+  background: var(--risk-low-bg);
+}
+
+.hazard-summary--moderate { border-left-color: var(--risk-moderate); background: var(--risk-moderate-bg); }
+.hazard-summary--high { border-left-color: var(--risk-high); background: var(--risk-high-bg); }
+.hazard-summary--extreme { border-left-color: var(--risk-extreme); background: var(--risk-extreme-bg); }
+
+.hazard-summary-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.hazard-summary-level {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--risk-low);
+}
+
+.hazard-summary--moderate .hazard-summary-level { color: #8a6420; }
+.hazard-summary--high .hazard-summary-level { color: var(--risk-high); }
+.hazard-summary--extreme .hazard-summary-level { color: var(--risk-extreme); }
+
+.hazard-summary-busy {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .hazard-summary-headline {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   color: var(--text-primary);
 }
 
+.hazard-summary-cta {
+  margin-top: 4px;
+}
+
 .hazard-summary-note {
   font-size: 12px;
-  color: var(--risk-moderate);
+  color: #8a6420;
+}
+
+.hazard-list-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
 }
 
 /* ── Hazard list ── */
@@ -2616,3 +2563,137 @@ tr:hover td { background: var(--surface-sunken); }
    that visibly stops sticking. Every width in this sheet is already max-width
    based, and wide children (tables, the SMS preview) scroll inside their own
    containers, so the overflow it would mask should not occur. */
+
+/* ─── Shared helpers ─────────────────────────────────────────────────────── */
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 2000;
+  padding: 8px 14px;
+  background: var(--text-primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.skip-link:focus { top: 8px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.chip:hover,
+.chip:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+
+.example-places {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hazard-empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 4px 0 8px;
+}
+
+/* Skeletons hold the exact shape of what is coming, so the list does not jump
+   when it lands and the wait reads as progress rather than as a stall. */
+.hazard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+.skeleton--banner { height: 92px; border-radius: var(--radius); }
+.skeleton--card { height: 70px; }
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* ─── Dashboard on phones ───────────────────────────────────────────────── */
+/* The answer comes first. The map used to take the top half of the screen and
+   push the search box and every result below the fold; it is context, so it
+   now follows the list. And opening a hazard used to append its detail under
+   the entire list and the map — off screen, so the tap looked like it did
+   nothing. It is now a full-screen sheet with a back button. */
+
+@media (max-width: 768px) {
+  .dashboard .map-container {
+    min-height: 38dvh;
+    min-height: 38vh;
+  }
+
+  .dashboard .side-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    max-height: none;
+    width: 100%;
+    border-top: none;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    background: var(--bg-primary);
+    overscroll-behavior: contain;
+    animation: sheet-in 180ms ease-out;
+  }
+
+  body.sheet-open {
+    overflow: hidden;
+  }
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* Pinned so the way out is always one tap away, however far down the
+   advisory someone has scrolled. Declared here because the base
+   `.mobile-back-btn { display: none }` comes later in the stylesheet than the
+   older media queries that tried to show it, so it never appeared. */
+.dashboard .side-panel .mobile-back-btn {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  align-self: flex-start;
+  min-height: 44px;
+  box-shadow: var(--shadow-md);
+}
