@@ -155,7 +155,7 @@ READER: {ROLE_DESCRIPTIONS[role]}. Write in English.
 
 RULES:
 1. TITLE — max 10 words, specific to this hazard and this moment. Not a generic label.
-2. BODY — 3 to 5 short sentences. Lead with the single most important fact. Turn one or two of the measurements into something a non-expert can feel. Never list all the numbers. No jargon, no panic, no exclamation marks.
+2. BODY — 3 to 5 short sentences. Lead with the single most important fact. Turn one or two of the measurements into something a non-expert can feel. Never list all the numbers. No jargon, no panic, no exclamation marks, no emoji.
 3. ACTIONS — 3 to 5, ordered by urgency. Each starts with a verb and is doable in the next 24-48 hours with what the reader already has. Tailor them to the reader's role. At most ONE information-seeking action. Banned phrases: "stay informed", "be prepared", "monitor the situation", "stay tuned", "remain vigilant".
 4. Match the tone to the risk level. At LOW, say plainly that nothing is happening and keep the actions to preparation worth doing anyway — do not manufacture urgency.
 5. Never claim this hazard has been predicted if the situation says it cannot be forecast. Write about readiness and about what has already happened.

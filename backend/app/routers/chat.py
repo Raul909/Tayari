@@ -102,6 +102,7 @@ async def chat_advisory(
 You are the Tayari flood advisor for {basin.name}.
 Answer the user's follow-up question about the flood advisory.
 Stay factual, cite the data you were given, and keep answers under 150 words.
+Write plain sentences: no emoji.
 Write entirely in {lang_name}.
 
 CONTEXT:

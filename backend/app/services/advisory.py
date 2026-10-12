@@ -427,7 +427,7 @@ async def _get_cached_english_block(risk: FloodRiskScore, role: UserRole) -> Opt
     as a translation source, or None. Checks the in-memory base cache first, then
     reuses any English advisory a user already requested (persisted in the DB, so
     the base survives process restarts). Only AI-generated English is reused — a
-    template base would translate its emoji/label title oddly.
+    template base would translate its label-style title oddly.
     """
     key = _english_base_key(risk, role)
     hit = _english_base_cache.get(key)
@@ -505,7 +505,7 @@ EXPOSURE (within the {impact.flood_zone_km} km flood zone):
 READER: {ROLE_DESCRIPTIONS[role]}. Write in English.
 RULES:
 1. TITLE — max 10 words, specific to this river and moment, not a generic label.
-2. BODY — 3–5 short sentences. Lead with the single most important fact. Give the danger window primarily as a concrete number of days from today ("within 2 days", "over the next 3 days"), not vague soon-language; you may add the weekday in brackets, but the day-count is the main phrasing (numbers stay accurate in every translation, weekday names often do not). Translate one or two numbers into meaning a non-expert feels (e.g. "the river is already carrying twice its normal water"). Never dump all the statistics. No jargon, no panic, no exclamation marks.
+2. BODY — 3–5 short sentences. Lead with the single most important fact. Give the danger window primarily as a concrete number of days from today ("within 2 days", "over the next 3 days"), not vague soon-language; you may add the weekday in brackets, but the day-count is the main phrasing (numbers stay accurate in every translation, weekday names often do not). Translate one or two numbers into meaning a non-expert feels (e.g. "the river is already carrying twice its normal water"). Never dump all the statistics. No jargon, no panic, no exclamation marks, no emoji.
 3. ACTIONS — 3 to 5, ordered by urgency. Each starts with a verb, is doable within 24–48 hours with local resources, and is tailored to the reader's role (a farmer moves grain and livestock; an officer pre-positions boats and alerts clinics). At most ONE information-type action. Banned phrases: "stay informed", "be prepared", "monitor the situation", "stay tuned", "remain vigilant".
 4. Tone must match risk. If the trend is FALLING or the risk is easing, say so honestly.
 
@@ -985,22 +985,22 @@ def _generate_template_advisory(
     # Build title and body
     titles = {
         Language.ENGLISH: {
-            RiskLevel.EXTREME: f"⚠️ EXTREME FLOOD WARNING — {river_name}",
-            RiskLevel.HIGH: f"🔴 HIGH FLOOD RISK — {river_name}",
-            RiskLevel.MODERATE: f"🟡 FLOOD WATCH — {river_name}",
-            RiskLevel.LOW: f"🟢 Normal Conditions — {river_name}",
+            RiskLevel.EXTREME: f"EXTREME FLOOD WARNING — {river_name}",
+            RiskLevel.HIGH: f"HIGH FLOOD RISK — {river_name}",
+            RiskLevel.MODERATE: f"FLOOD WATCH — {river_name}",
+            RiskLevel.LOW: f"Normal Conditions — {river_name}",
         },
         Language.SOMALI: {
-            RiskLevel.EXTREME: f"⚠️ DIGNIIN DAAD AH OO AADKA AH — {river_name}",
-            RiskLevel.HIGH: f"🔴 KHATAR DAAD SARE — {river_name}",
-            RiskLevel.MODERATE: f"🟡 FEEJIGNAAN DAAD — {river_name}",
-            RiskLevel.LOW: f"🟢 Xaalad Caadi — {river_name}",
+            RiskLevel.EXTREME: f"DIGNIIN DAAD AH OO AADKA AH — {river_name}",
+            RiskLevel.HIGH: f"KHATAR DAAD SARE — {river_name}",
+            RiskLevel.MODERATE: f"FEEJIGNAAN DAAD — {river_name}",
+            RiskLevel.LOW: f"Xaalad Caadi — {river_name}",
         },
         Language.SWAHILI: {
-            RiskLevel.EXTREME: f"⚠️ ONYO KALI LA MAFURIKO — {river_name}",
-            RiskLevel.HIGH: f"🔴 HATARI KUBWA YA MAFURIKO — {river_name}",
-            RiskLevel.MODERATE: f"🟡 TAHADHARI YA MAFURIKO — {river_name}",
-            RiskLevel.LOW: f"🟢 Hali ya Kawaida — {river_name}",
+            RiskLevel.EXTREME: f"ONYO KALI LA MAFURIKO — {river_name}",
+            RiskLevel.HIGH: f"HATARI KUBWA YA MAFURIKO — {river_name}",
+            RiskLevel.MODERATE: f"TAHADHARI YA MAFURIKO — {river_name}",
+            RiskLevel.LOW: f"Hali ya Kawaida — {river_name}",
         },
     }
 

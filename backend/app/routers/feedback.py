@@ -23,11 +23,11 @@ class FeedbackCreate(BaseModel):
 
 
 RATING_MAP = {
-    1: "Angry 😠",
-    2: "Sad 😞",
-    3: "Neutral 😐",
-    4: "Happy 🙂",
-    5: "Very Happy 😄",
+    1: "1/5 – Very poor",
+    2: "2/5 – Poor",
+    3: "3/5 – Okay",
+    4: "4/5 – Good",
+    5: "5/5 – Very good",
 }
 
 
