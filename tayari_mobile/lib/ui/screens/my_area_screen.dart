@@ -437,7 +437,17 @@ class _SummaryBanner extends StatelessWidget {
               const SizedBox(height: 10),
               FilledButton.tonal(
                 onPressed: () => onOpenTop(top),
-                child: Text('What to do about ${hazardMeta(top['hazard'] as String).short.toLowerCase()} →'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                          'What to do about ${hazardMeta(top['hazard'] as String).short.toLowerCase()}'),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward, size: 18),
+                  ],
+                ),
               ),
             ],
             if (savedAt != null) ...[
@@ -492,7 +502,7 @@ class _HazardTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(meta.icon, style: const TextStyle(fontSize: 24)),
+              HazardIcon(risk['hazard'] as String),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

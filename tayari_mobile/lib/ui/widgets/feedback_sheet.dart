@@ -5,7 +5,7 @@ import '../../providers/db_provider.dart';
 import '../theme.dart';
 
 /// Opens the feedback sheet. Mirrors the web app's feedback modal: a required
-/// 1–5 emoji opinion rating, an optional subject, an optional comment, and a
+/// 1–5 rating, an optional subject, an optional comment, and a
 /// submit that goes to the backend (with a direct FormSubmit.co fallback so
 /// feedback is never lost when the backend is cold or offline).
 Future<void> showFeedbackSheet(BuildContext context) {
@@ -20,20 +20,16 @@ Future<void> showFeedbackSheet(BuildContext context) {
   );
 }
 
-class _Emoji {
-  final int value;
-  final String icon;
-  final String label;
-  const _Emoji(this.value, this.icon, this.label);
-}
-
-const _emojis = <_Emoji>[
-  _Emoji(1, '😠', 'Angry'),
-  _Emoji(2, '😞', 'Sad'),
-  _Emoji(3, '😐', 'Neutral'),
-  _Emoji(4, '🙂', 'Happy'),
-  _Emoji(5, '😄', 'Very happy'),
-];
+/// A plain 1–5 scale rather than a row of faces: numbers mean the same thing
+/// on every phone and in every culture, and the words under the ends say what
+/// the scale runs from and to.
+const _ratingLabels = {
+  1: 'Very poor',
+  2: 'Poor',
+  3: 'Okay',
+  4: 'Good',
+  5: 'Very good',
+};
 
 const _subjects = ['Bug', 'Suggestion', 'Other'];
 
@@ -60,7 +56,7 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
 
   Future<void> _submit() async {
     if (_rating == null) {
-      setState(() => _error = 'Please select an opinion rating.');
+      setState(() => _error = 'Please choose a rating.');
       return;
     }
     setState(() {
@@ -163,17 +159,31 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
         ),
         const SizedBox(height: 4),
 
-        _label('What is your opinion of the app?', required: true),
+        _label('How would you rate the app?', required: true),
         const SizedBox(height: 8),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            for (final e in _emojis) _emojiButton(e),
+            for (final value in _ratingLabels.keys) ...[
+              if (value > 1) const SizedBox(width: 6),
+              Expanded(child: _ratingButton(value)),
+            ],
           ],
+        ),
+        const SizedBox(height: 6),
+        ExcludeSemantics(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_ratingLabels[1]!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              Text(_ratingLabels[5]!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            ],
+          ),
         ),
         const SizedBox(height: 20),
 
-        _label('Please select a subject:'),
+        _label('Subject'),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -183,7 +193,7 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
         ),
         const SizedBox(height: 20),
 
-        _label('Would you like to add a comment?'),
+        _label('Comment (optional)'),
         const SizedBox(height: 8),
         TextField(
           controller: _commentController,
@@ -259,34 +269,35 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
     );
   }
 
-  Widget _emojiButton(_Emoji e) {
-    final selected = _rating == e.value;
+  Widget _ratingButton(int value) {
+    final selected = _rating == value;
     return Semantics(
       button: true,
       selected: selected,
-      label: e.label,
-      child: Tooltip(
-        message: e.label,
-        child: GestureDetector(
-          onTap: () => setState(() => _rating = e.value),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: 52,
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected
-                  ? AppColors.accent.withValues(alpha: 0.12)
-                  : AppColors.surface,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: selected ? AppColors.accent : AppColors.border,
-                width: selected ? 2 : 1,
-              ),
+      label: '$value, ${_ratingLabels[value]}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () => setState(() => _rating = value),
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.12)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: selected ? AppColors.accent : AppColors.border,
             ),
-            child: Text(
-              e.icon,
-              style: TextStyle(fontSize: selected ? 26 : 22),
+          ),
+          child: Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: selected ? AppColors.accent : AppColors.textSecondary,
             ),
           ),
         ),

@@ -86,7 +86,7 @@ class _HazardDetailScreenState extends ConsumerState<HazardDetailScreen> {
         children: [
           Row(
             children: [
-              Text(meta.icon, style: const TextStyle(fontSize: 30)),
+              HazardIcon(risk['hazard'] as String, size: 28),
               const SizedBox(width: 12),
               RiskBadge(level: level),
               const SizedBox(width: 8),

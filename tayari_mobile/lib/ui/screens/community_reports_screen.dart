@@ -318,7 +318,7 @@ class _ReportCardState extends ConsumerState<_ReportCard> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '💬 ${a['author_name'] ?? a['author_role'] ?? 'Responder'}',
+                            '${a['author_name'] ?? a['author_role'] ?? 'Responder'}',
                             style: const TextStyle(
                                 fontSize: 11, color: AppColors.textMuted),
                           ),
