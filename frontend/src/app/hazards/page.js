@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { fetchHazardTypes, fetchLiveEvents, hazardMeta, ONSET_LABELS } from '@/lib/hazards';
 import { BASINS } from '@/lib/constants';
+import Icon from '@/components/Icon';
 
 /**
  * The hazard guide: what Tayari watches, and what to do about each one.
@@ -95,8 +96,8 @@ export default function HazardsPage() {
                   onClick={() => setSelected(active ? null : h)}
                   aria-pressed={active}
                 >
-                  <span className="hazard-tile-icon" aria-hidden="true">
-                    {meta.icon}
+                  <span className="hazard-tile-icon" style={{ color: meta.color }}>
+                    <Icon name={meta.icon} size={24} />
                   </span>
                   <span className="hazard-tile-label">{h.label}</span>
                   <span className="hazard-tile-onset">
@@ -145,9 +146,11 @@ function HazardDetailPanel({ hazard, events }) {
       <div className="card">
         <div className="card-header">
           <div className="card-title">
-            <span aria-hidden="true" style={{ marginRight: 8 }}>
-              {meta.icon}
-            </span>
+            <Icon
+              name={meta.icon}
+              size={20}
+              style={{ marginRight: 8, verticalAlign: '-4px', color: meta.color }}
+            />
             {hazard.label}
           </div>
         </div>

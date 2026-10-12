@@ -1,5 +1,6 @@
 'use client';
 
+import Icon from '@/components/Icon';
 import { hazardMeta, ONSET_LABELS } from '@/lib/hazards';
 
 /**
@@ -23,8 +24,8 @@ export default function HazardCard({ risk, active, onSelect }) {
       onClick={() => onSelect(risk)}
       aria-pressed={active}
     >
-      <span className="hazard-card-icon" aria-hidden="true">
-        {meta.icon}
+      <span className="hazard-card-icon" style={{ color: meta.color }}>
+        <Icon name={meta.icon} size={22} />
       </span>
 
       <span className="hazard-card-body">

@@ -10,6 +10,7 @@ import {
 } from '@/lib/api';
 import { BASINS, REPORT_STATUSES } from '@/lib/constants';
 import { useToast } from '@/components/Toast';
+import Icon from '@/components/Icon';
 import LocationBar from '@/components/LocationBar';
 import { loadLocation } from '@/lib/hazards';
 
@@ -203,7 +204,7 @@ export default function ReportPage() {
                   className="btn btn-ghost report-photo-btn"
                   onClick={() => photoInputRef.current?.click()}
                 >
-                  <span aria-hidden="true">📷</span> Take or choose a photo
+                  <Icon name="photo_camera" size={18} /> Take or choose a photo
                 </button>
               )}
 
@@ -415,7 +416,7 @@ function ReportCard({ report, onUpdated, notify }) {
             >
               <div style={{ color: 'var(--text-secondary)' }}>{a.message}</div>
               <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>
-                💬 {a.author_name || 'Responder'} ·{' '}
+                {a.author_name || 'Responder'} ·{' '}
                 {new Date(a.created_at).toLocaleString()}
               </div>
             </div>
@@ -464,7 +465,8 @@ function ReportCard({ report, onUpdated, notify }) {
           style={{ marginTop: '10px' }}
           onClick={() => setShowAdviceForm(true)}
         >
-          💬 Give advice{advice.length > 0 ? ` (${advice.length})` : ''}
+          <Icon name="chat_bubble" size={16} />
+          Give advice{advice.length > 0 ? ` (${advice.length})` : ''}
         </button>
       )}
     </div>

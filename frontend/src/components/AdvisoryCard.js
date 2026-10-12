@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Icon from '@/components/Icon';
 import { sendChatMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { LANGUAGE_LABELS } from '@/lib/constants';
@@ -86,8 +87,11 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
       )}
       {advisory.ai_generated && (
         <div className="advisory-ai-note">
-          ✨ AI-generated advisory — AI can make mistakes. Verify critical details
-          with official sources before acting.
+          <Icon name="info" size={16} />
+          <span>
+            Written by AI, which can make mistakes. Check critical details with official
+            sources before acting.
+          </span>
         </div>
       )}
       
@@ -95,7 +99,8 @@ export default function AdvisoryCard({ advisory, basinId, role, language }) {
         className="advisory-chat-toggle"
         onClick={() => setChatOpen(!chatOpen)}
       >
-        💬 {chatOpen ? 'Hide chat' : 'Ask about this advisory'}
+        <Icon name="chat_bubble" size={16} />
+        {chatOpen ? 'Hide chat' : 'Ask about this advisory'}
       </button>
 
       {chatOpen && (

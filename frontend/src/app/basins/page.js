@@ -15,6 +15,7 @@ import {
 import { getDeviceTier, mapOptionsForTier, loadMapLibrary, onIdle, TIERS } from '@/lib/perf';
 import { useToast } from '@/components/Toast';
 import RiskGauge from '@/components/RiskGauge';
+import Icon from '@/components/Icon';
 import AdvisoryCard from '@/components/AdvisoryCard';
 import ImpactPanel from '@/components/ImpactPanel';
 import { useAuth } from '@/lib/auth';
@@ -410,7 +411,7 @@ export default function BasinsDashboard() {
           <div className="map-placeholder">
             {deferMap ? (
               <div className="map-placeholder-inner">
-                <div className="map-placeholder-icon" aria-hidden="true">🗺️</div>
+                <Icon name="map" size={36} className="map-placeholder-icon" />
                 <p className="map-placeholder-text">
                   The interactive map uses about 1&nbsp;MB of data.
                 </p>
@@ -491,7 +492,7 @@ export default function BasinsDashboard() {
             className="mobile-back-btn"
             onClick={() => setSelectedBasin(null)}
           >
-            ← Back to map
+            <Icon name="arrow_back" size={18} /> Back to map
           </button>
           {forecastLoading && !forecast ? (
             <div className="loading-container">

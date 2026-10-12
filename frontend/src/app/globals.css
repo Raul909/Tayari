@@ -1,5 +1,5 @@
 /* ─── Tayari ───────────────────────────────────────────────────────────── */
-/* Flood Early Warning & Early Action System                                */
+/* Multi-Hazard Early Warning & Early Action System                         */
 /* A calm, legible, paper-toned interface. Restrained on purpose:           */
 /* one accent, muted risk colours, no glow. The data should be the loud     */
 /* part, not the chrome.                                                     */
@@ -82,6 +82,13 @@ body {
 }
 
 a { color: inherit; }
+
+/* Inline SVG icons (components/Icon.js). They sit in text and flex rows, so
+   they must never shrink, and they inherit the text colour. */
+.icon {
+  flex-shrink: 0;
+  display: inline-block;
+}
 
 /* ─── Layout ───────────────────────────────────────────────────────────── */
 
@@ -417,7 +424,7 @@ a { color: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 32% 28%, #f1efe8, var(--bg-secondary) 70%);
+  background: var(--bg-secondary);
 }
 
 .map-placeholder-inner {
@@ -430,9 +437,7 @@ a { color: inherit; }
 }
 
 .map-placeholder-icon {
-  font-size: 34px;
-  opacity: 0.6;
-  line-height: 1;
+  color: var(--text-muted);
 }
 
 .map-placeholder-text {
@@ -564,6 +569,7 @@ a { color: inherit; }
   display: flex;
   flex-direction: column;
   gap: 6px;
+  counter-reset: step;
 }
 
 .advisory-actions li {
@@ -576,26 +582,28 @@ a { color: inherit; }
   align-items: flex-start;
   gap: 8px;
   line-height: 1.5;
+  counter-increment: step;
 }
 
+/* Numbered, because these are steps to take in order. A number also reads the
+   same in Arabic: flex order follows the dir attribute, so no RTL override. */
 .advisory-actions li::before {
-  content: "→";
-  color: var(--accent);
+  content: counter(step);
   flex-shrink: 0;
-}
-
-/* Arabic advisories render right-to-left; flex order and alignment follow the
-   dir attribute natively, only the action arrow needs to point with the text. */
-.advisory-actions[dir="rtl"] li::before {
-  content: "←";
+  min-width: 1.4em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-hover);
 }
 
 .advisory-ai-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px dashed var(--border-color);
-  font-size: 11px;
-  font-style: italic;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text-muted);
 }
@@ -1471,11 +1479,16 @@ tr:hover td { background: var(--surface-sunken); }
 
 .feedback-close {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
   background: none;
   border: none;
-  font-size: 20px;
   cursor: pointer;
   color: var(--text-secondary);
   transition: color 0.2s;
@@ -1509,36 +1522,47 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .feedback-section .required {
-  color: #ff4d4f;
+  color: var(--risk-high);
 }
 
-.feedback-emojis {
+.feedback-rating {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.rating-btn {
+  height: 44px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition),
+    color var(--transition);
+}
+
+.rating-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.rating-btn.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.feedback-rating-ends {
   display: flex;
   justify-content: space-between;
-}
-
-.emoji-btn {
-  background: none;
-  border: 2px solid transparent;
-  font-size: 32px;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  transition: transform 0.2s, filter 0.2s;
-  filter: grayscale(100%);
-  opacity: 0.6;
-}
-
-.emoji-btn:hover {
-  transform: scale(1.1);
-  filter: grayscale(50%);
-  opacity: 0.8;
-}
-
-.emoji-btn.selected {
-  filter: grayscale(0%);
-  opacity: 1;
-  transform: scale(1.15);
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .feedback-subjects {
@@ -1574,6 +1598,7 @@ tr:hover td { background: var(--surface-sunken); }
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px;
+  font-family: inherit;
   font-size: 0.9rem;
   background: transparent;
   color: var(--text-primary);
@@ -1586,7 +1611,7 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .feedback-error {
-  color: #ff4d4f;
+  color: var(--risk-high);
   font-size: 0.85rem;
   margin-bottom: 16px;
   text-align: center;
@@ -1596,26 +1621,6 @@ tr:hover td { background: var(--surface-sunken); }
   display: flex;
   justify-content: flex-end;
   margin-bottom: 16px;
-}
-
-.feedback-submit-btn {
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 10px 24px;
-  border-radius: 20px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.feedback-submit-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.feedback-submit-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .feedback-watermark {
@@ -1636,9 +1641,9 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .success-icon {
-  font-size: 48px;
-  color: #52c41a;
-  margin-bottom: 16px;
+  display: block;
+  margin: 0 auto 12px;
+  color: var(--risk-low);
 }
 
 /* ─── Multi-hazard dashboard ──────────────────────────────────────────────── */
@@ -1895,8 +1900,14 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .hazard-card-icon {
-  font-size: 20px;
-  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-color);
   flex: 0 0 auto;
 }
 
@@ -1963,8 +1974,15 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .hazard-detail-icon {
-  font-size: 30px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-color);
 }
 
 .hazard-detail-title {
@@ -2048,6 +2066,9 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .indicator-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
   font-weight: 500;
   font-family: var(--font-mono);
@@ -2123,9 +2144,20 @@ tr:hover td { background: var(--surface-sunken); }
   line-height: 1.5;
 }
 
+.source-list li {
+  position: relative;
+  padding-left: 12px;
+}
+
 .source-list li::before {
-  content: '↳ ';
-  color: var(--text-muted);
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.7em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
 }
 
 .source-note {
@@ -2154,10 +2186,17 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .map-volcano {
-  font-size: 17px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #a2412a; /* the volcano hazard colour in lib/hazards.js */
+  border: 2px solid #ffffff;
+  color: #ffffff;
   cursor: pointer;
-  filter: drop-shadow(0 1px 2px rgba(35, 33, 28, 0.4));
+  box-shadow: 0 1px 3px rgba(35, 33, 28, 0.35);
 }
 
 .map-you {
@@ -2231,7 +2270,7 @@ tr:hover td { background: var(--surface-sunken); }
   background: var(--accent-soft);
 }
 
-.hazard-tile-icon { font-size: 20px; line-height: 1.1; }
+.hazard-tile-icon { display: inline-flex; margin-bottom: 4px; }
 
 .hazard-tile-label {
   font-size: 13px;
@@ -2338,6 +2377,9 @@ tr:hover td { background: var(--surface-sunken); }
 }
 
 .hazard-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 7px 11px;
   font-size: 13px;
   font-family: inherit;
@@ -2419,9 +2461,8 @@ tr:hover td { background: var(--surface-sunken); }
   background: none;
   border: none;
   cursor: pointer;
+  /* Size and colour come from .nav-link, so Feedback matches its neighbours. */
   font-family: inherit;
-  font-size: inherit;
-  color: inherit;
 }
 
 /* The bottom tab bar: hidden by default, shown on phones. */
@@ -2478,8 +2519,7 @@ tr:hover td { background: var(--surface-sunken); }
   }
 
   .tabbar-icon {
-    font-size: 17px;
-    line-height: 1;
+    display: block;
   }
 
   .tabbar-label {
@@ -2638,15 +2678,14 @@ tr:hover td { background: var(--surface-sunken); }
 }
 .skeleton {
   border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.2s ease-in-out infinite;
+  background: var(--bg-secondary);
+  animation: pulse 1.4s ease-in-out infinite;
 }
 .skeleton--banner { height: 92px; border-radius: var(--radius); }
 .skeleton--card { height: 70px; }
-@keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import HazardCard from '@/components/HazardCard';
+import Icon, { iconSvg } from '@/components/Icon';
 import HazardDetail from '@/components/HazardDetail';
 import LocationBar from '@/components/LocationBar';
 import { useToast } from '@/components/Toast';
@@ -254,7 +255,7 @@ export default function HazardDashboard() {
     (events.volcanoes || []).forEach((volcano) => {
       const el = document.createElement('div');
       el.className = 'map-volcano';
-      el.textContent = '🌋';
+      el.innerHTML = iconSvg('volcano', 14);
       el.title = volcano.title;
 
       const marker = new maplibregl.Marker({ element: el })
@@ -390,7 +391,8 @@ export default function HazardDashboard() {
                   className="btn btn-sm hazard-summary-cta"
                   onClick={() => setSelected(top)}
                 >
-                  What to do about {hazardMeta(top.hazard).short.toLowerCase()} →
+                  What to do about {hazardMeta(top.hazard).short.toLowerCase()}
+                  <Icon name="arrow_forward" size={16} />
                 </button>
               )}
               {profile.partial && (
@@ -432,7 +434,7 @@ export default function HazardDashboard() {
           <div className="map-placeholder">
             {deferMap ? (
               <div className="map-placeholder-inner">
-                <div className="map-placeholder-icon" aria-hidden="true">🗺️</div>
+                <Icon name="map" size={36} className="map-placeholder-icon" />
                 <p className="map-placeholder-text">
                   The interactive map uses about 1&nbsp;MB of data.
                 </p>

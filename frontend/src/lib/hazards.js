@@ -12,19 +12,19 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export const HAZARD_META = {
-  flood: { label: 'River flooding', short: 'Flood', icon: '🌊', color: '#2E6F8E' },
-  earthquake: { label: 'Earthquake', short: 'Quake', icon: '🏚️', color: '#8A5A2B' },
-  tsunami: { label: 'Tsunami', short: 'Tsunami', icon: '🌀', color: '#1F5F73' },
-  volcano: { label: 'Volcanic activity', short: 'Volcano', icon: '🌋', color: '#A2412A' },
-  cyclone: { label: 'Cyclone & severe storm', short: 'Storm', icon: '🌪️', color: '#4C5B8C' },
-  extreme_heat: { label: 'Extreme heat', short: 'Heat', icon: '🔥', color: '#C2603A' },
-  wildfire: { label: 'Wildfire weather', short: 'Wildfire', icon: '🔥', color: '#B4501F' },
-  drought: { label: 'Drought', short: 'Drought', icon: '🏜️', color: '#9A7B3F' },
-  landslide: { label: 'Landslide', short: 'Landslide', icon: '⛰️', color: '#6B5B45' },
+  flood: { label: 'River flooding', short: 'Flood', icon: 'flood', color: '#2E6F8E' },
+  earthquake: { label: 'Earthquake', short: 'Quake', icon: 'earthquake', color: '#8A5A2B' },
+  tsunami: { label: 'Tsunami', short: 'Tsunami', icon: 'tsunami', color: '#1F5F73' },
+  volcano: { label: 'Volcanic activity', short: 'Volcano', icon: 'volcano', color: '#A2412A' },
+  cyclone: { label: 'Cyclone & severe storm', short: 'Storm', icon: 'cyclone', color: '#4C5B8C' },
+  extreme_heat: { label: 'Extreme heat', short: 'Heat', icon: 'thermostat', color: '#C2603A' },
+  wildfire: { label: 'Wildfire weather', short: 'Wildfire', icon: 'local_fire_department', color: '#B4501F' },
+  drought: { label: 'Drought', short: 'Drought', icon: 'wb_sunny', color: '#9A7B3F' },
+  landslide: { label: 'Landslide', short: 'Landslide', icon: 'landslide', color: '#6B5B45' },
 };
 
 export function hazardMeta(hazard) {
-  return HAZARD_META[hazard] || { label: hazard, short: hazard, icon: '⚠️', color: '#6b6558' };
+  return HAZARD_META[hazard] || { label: hazard, short: hazard, icon: 'warning', color: '#6b6558' };
 }
 
 /** How fast a hazard arrives, in words the reader can act on. */

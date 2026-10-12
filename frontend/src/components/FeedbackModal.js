@@ -2,15 +2,13 @@
 
 import { useState } from 'react';
 
-import { sendFeedback } from '@/lib/api';
+import Icon from '@/components/Icon';
+import { RATING_LABELS, sendFeedback } from '@/lib/api';
 
-const EMOJIS = [
-  { value: 1, label: 'Angry', icon: '😠' },
-  { value: 2, label: 'Sad', icon: '😞' },
-  { value: 3, label: 'Neutral', icon: '😐' },
-  { value: 4, label: 'Happy', icon: '🙂' },
-  { value: 5, label: 'Very Happy', icon: '😄' }
-];
+// A plain 1–5 scale rather than a row of faces: numbers mean the same thing on
+// every platform and in every culture, and the words underneath say what the
+// ends of the scale are.
+const RATINGS = [1, 2, 3, 4, 5];
 
 const SUBJECTS = ['Bug', 'Suggestion', 'Other'];
 
@@ -24,7 +22,7 @@ export default function FeedbackModal({ onClose }) {
 
   const handleSubmit = async () => {
     if (!rating) {
-      setError('Please select an opinion rating.');
+      setError('Please choose a rating.');
       return;
     }
     setError('');
@@ -46,35 +44,46 @@ export default function FeedbackModal({ onClose }) {
   return (
     <div className="feedback-overlay" onClick={onClose}>
       <div className="feedback-modal" onClick={e => e.stopPropagation()}>
-        <button className="feedback-close" onClick={onClose} aria-label="Close">✕</button>
+        <button className="feedback-close" onClick={onClose} aria-label="Close">
+          <Icon name="close" size={20} />
+        </button>
         
         <h2 className="feedback-title">Your feedback</h2>
 
         {submitted ? (
           <div className="feedback-success">
-            <div className="success-icon">✓</div>
+            <Icon name="check_circle" size={44} className="success-icon" />
             <p>Thank you for your feedback!</p>
           </div>
         ) : (
           <div className="feedback-body">
             <div className="feedback-section">
-              <label>What is your opinion of this page? <span className="required">*</span></label>
-              <div className="feedback-emojis">
-                {EMOJIS.map((emoji) => (
+              <label id="feedback-rating-label">
+                How would you rate this page? <span className="required">*</span>
+              </label>
+              <div className="feedback-rating" role="radiogroup" aria-labelledby="feedback-rating-label">
+                {RATINGS.map((value) => (
                   <button
-                    key={emoji.value}
-                    className={`emoji-btn ${rating === emoji.value ? 'selected' : ''}`}
-                    onClick={() => setRating(emoji.value)}
-                    title={emoji.label}
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={rating === value}
+                    aria-label={`${value} — ${RATING_LABELS[value]}`}
+                    className={`rating-btn ${rating === value ? 'selected' : ''}`}
+                    onClick={() => setRating(value)}
                   >
-                    {emoji.icon}
+                    {value}
                   </button>
                 ))}
+              </div>
+              <div className="feedback-rating-ends" aria-hidden="true">
+                <span>{RATING_LABELS[1]}</span>
+                <span>{RATING_LABELS[5]}</span>
               </div>
             </div>
 
             <div className="feedback-section">
-              <label>Please select a subject:</label>
+              <label>Subject</label>
               <div className="feedback-subjects">
                 {SUBJECTS.map((sub) => (
                   <button
@@ -89,9 +98,9 @@ export default function FeedbackModal({ onClose }) {
             </div>
 
             <div className="feedback-section">
-              <label>Would you like to add a comment?</label>
+              <label>Comment (optional)</label>
               <textarea
-                placeholder="PLEASE GIVE YOUR FEEDBACK HERE"
+                placeholder="What worked, what didn't, or what's missing?"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={4}
@@ -101,12 +110,12 @@ export default function FeedbackModal({ onClose }) {
             {error && <div className="feedback-error">{error}</div>}
 
             <div className="feedback-footer">
-              <button 
-                className="feedback-submit-btn" 
+              <button
+                className="btn btn-primary"
                 onClick={handleSubmit}
                 disabled={submitting || !rating}
               >
-                {submitting ? 'Submitting…' : 'Send Feedback'}
+                {submitting ? 'Submitting…' : 'Send feedback'}
               </button>
             </div>
             

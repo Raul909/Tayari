@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Icon from '@/components/Icon';
 import LocationBar from '@/components/LocationBar';
 import { useToast } from '@/components/Toast';
 import { useAuth } from '@/lib/auth';
@@ -225,7 +226,7 @@ export default function AlertsPage() {
                   onClick={() => setHazard(h.hazard)}
                   aria-pressed={hazard === h.hazard}
                 >
-                  <span aria-hidden="true">{meta.icon}</span> {meta.short}
+                  <Icon name={meta.icon} size={18} /> {meta.short}
                 </button>
               );
             })}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Icon from '@/components/Icon';
 import { fetchHazardAdvisory, hazardMeta, ONSET_LABELS } from '@/lib/hazards';
 import { LANGUAGE_LABELS, ROLES } from '@/lib/constants';
 
@@ -57,12 +58,12 @@ export default function HazardDetail({ risk, location, onClose }) {
   return (
     <div className="hazard-detail">
       <button type="button" className="mobile-back-btn" onClick={onClose}>
-        <span aria-hidden="true">←</span> Back to all hazards
+        <Icon name="arrow_back" size={18} /> Back to all hazards
       </button>
 
       <header className="hazard-detail-head">
-        <span className="hazard-detail-icon" aria-hidden="true">
-          {meta.icon}
+        <span className="hazard-detail-icon" style={{ color: meta.color }}>
+          <Icon name={meta.icon} size={28} />
         </span>
         <div>
           <h2 className="hazard-detail-title">{meta.label}</h2>
@@ -199,7 +200,7 @@ export default function HazardDetail({ risk, location, onClose }) {
                   {indicator.value}
                   {indicator.trend && (
                     <span className={`indicator-trend indicator-trend--${indicator.trend}`}>
-                      {indicator.trend === 'rising' ? '↑' : indicator.trend === 'falling' ? '↓' : '→'}
+                      <Icon name={TREND_ICONS[indicator.trend] || 'trending_flat'} size={16} />
                       {indicator.trend}
                     </span>
                   )}
@@ -260,3 +261,9 @@ export default function HazardDetail({ risk, location, onClose }) {
     </div>
   );
 }
+
+const TREND_ICONS = {
+  rising: 'trending_up',
+  falling: 'trending_down',
+  steady: 'trending_flat',
+};

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import UserMenu from '@/components/UserMenu';
 import FeedbackModal from '@/components/FeedbackModal';
+import Icon from '@/components/Icon';
 
 // "Basins" is gone from here on purpose. A river basin is flood-only hydrology
 // jargon, and having it as a top-level destination in a nine-hazard product
@@ -14,10 +15,10 @@ import FeedbackModal from '@/components/FeedbackModal';
 //
 // Icons are for the mobile tab bar only; the desktop bar stays text-only.
 const LINKS = [
-  { href: '/', label: 'My area', short: 'Area', icon: '📍' },
-  { href: '/hazards', label: 'Hazards', short: 'Hazards', icon: '⚠️' },
-  { href: '/alerts', label: 'Alerts', short: 'Alerts', icon: '🔔' },
-  { href: '/report', label: 'Report', short: 'Report', icon: '📸' },
+  { href: '/', label: 'My area', short: 'Area', icon: 'location_on' },
+  { href: '/hazards', label: 'Hazards', short: 'Hazards', icon: 'warning' },
+  { href: '/alerts', label: 'Alerts', short: 'Alerts', icon: 'notifications' },
+  { href: '/report', label: 'Report', short: 'Report', icon: 'photo_camera' },
 ];
 
 /**
@@ -67,7 +68,7 @@ export default function Navbar() {
             title="Provide feedback or report a bug"
             aria-label="Provide feedback"
           >
-            <span aria-hidden="true">💬</span>
+            <Icon name="chat_bubble" size={18} />
             <span className="feedback-text">Feedback</span>
           </button>
           <UserMenu />
@@ -85,7 +86,7 @@ export default function Navbar() {
             className={`tabbar-item ${isActive(link.href) ? 'active' : ''}`}
             aria-current={isActive(link.href) ? 'page' : undefined}
           >
-            <span className="tabbar-icon" aria-hidden="true">{link.icon}</span>
+            <Icon name={link.icon} size={22} className="tabbar-icon" />
             <span className="tabbar-label">{link.short}</span>
           </Link>
         ))}

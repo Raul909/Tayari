@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Icon from '@/components/Icon';
 import { detectLocation, placeLabel, searchPlaces } from '@/lib/hazards';
 
 /**
@@ -148,7 +149,7 @@ export default function LocationBar({ location, onSelect, busy, currentLabel = '
         >
           {detecting ? 'Locating…' : (
             <>
-              <span aria-hidden="true">📍</span> Use my location
+              <Icon name="my_location" size={18} /> Use my location
             </>
           )}
         </button>

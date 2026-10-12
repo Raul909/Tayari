@@ -159,7 +159,7 @@ export async function sendChatMessage(basinId, message, role = 'general', langua
   return res.json();
 }
 
-const RATING_LABELS = { 1: 'Angry 😠', 2: 'Sad 😞', 3: 'Neutral 😐', 4: 'Happy 🙂', 5: 'Very Happy 😄' };
+export const RATING_LABELS = { 1: 'Very poor', 2: 'Poor', 3: 'Okay', 4: 'Good', 5: 'Very good' };
 
 const FEEDBACK_EMAIL = 'contact@launchpixel.in';
 
@@ -175,7 +175,7 @@ const FEEDBACK_EMAIL = 'contact@launchpixel.in';
  * the body rather than trusting the 200.
  */
 async function deliverFeedbackViaFormSubmit(rating, subject, comment) {
-  const ratingText = RATING_LABELS[rating] || String(rating);
+  const ratingText = RATING_LABELS[rating] ? `${rating}/5 – ${RATING_LABELS[rating]}` : String(rating);
   const subjectText = subject || 'General';
   const payload = {
     rating: ratingText,
