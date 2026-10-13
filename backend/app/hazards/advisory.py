@@ -34,7 +34,7 @@ from app.services.advisory import (
     _split_advisory_text,
     _translate_with_groq,
 )
-from app.hazards.cache import TTLCache
+from app.hazards.cache import TTLCache, coalesce
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,19 @@ async def generate_hazard_advisory(
     if cached_template is not None:
         return cached_template
 
+    # Concurrent requests for the same advisory share one model call. Without
+    # this, a burst of readers opening the same card each spent a request of
+    # the LLM's free-tier quota on identical text.
+    return await coalesce(f"advisory:{key}", lambda: _write(risk, location, role, language, key))
+
+
+async def _write(
+    risk: HazardRisk,
+    location: LocationRef,
+    role: UserRole,
+    language: Language,
+    key: str,
+) -> HazardAdvisory:
     if HAS_GROQ and settings.groq_api_key:
         try:
             advisory = await _generate_with_model(risk, location, role, language)

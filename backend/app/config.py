@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "Tayari"
-    app_version: str = "1.0.0"
+    app_version: str = "1.1.0"
     environment: str = "development"
     log_level: str = "info"
 

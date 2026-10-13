@@ -8,6 +8,12 @@ router = APIRouter()
 
 FEEDBACK_EMAIL = "contact@launchpixel.in"
 
+# FormSubmit's alias for FEEDBACK_EMAIL, issued when the form was activated for
+# tayari.pages.dev. Posting to the alias instead of the address keeps the inbox
+# out of every client bundle and APK, where scrapers would otherwise find it.
+# The web app, the lite pages and the phone app all use the same alias.
+FORMSUBMIT_ENDPOINT = "https://formsubmit.co/ajax/bc7b96d4113e366589fd2e528232a340"
+
 # FormSubmit.co refuses requests that arrive without a browser-style referring
 # origin ("FormSubmit will not work in pages browsed as HTML files"). A browser
 # sends this automatically; a server-side httpx call must set it explicitly, or
@@ -20,6 +26,13 @@ class FeedbackCreate(BaseModel):
     rating: int
     subject: str | None = None
     comment: str | None = None
+    # True when the client already delivered the email itself. Browsers and the
+    # phone app post to FormSubmit directly (FormSubmit refuses Render's
+    # datacenter address), then call this endpoint only to record the feedback.
+    # Without the flag, this endpoint sends the email as well — which is what
+    # app versions released before the flag existed still rely on — and every
+    # message would arrive twice the day FormSubmit stopped refusing Render.
+    email_sent: bool = False
 
 
 RATING_MAP = {
@@ -61,7 +74,7 @@ async def _send_feedback_email(
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             res = await client.post(
-                f"https://formsubmit.co/ajax/{FEEDBACK_EMAIL}",
+                FORMSUBMIT_ENDPOINT,
                 json=payload,
                 # Required — without a referring origin FormSubmit rejects the
                 # POST (still HTTP 200, but body {"success": "false"}).
@@ -118,8 +131,9 @@ async def submit_feedback(feedback: FeedbackCreate):
     if not (1 <= feedback.rating <= 5):
         raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
 
-    # 1. Send the email (primary — must succeed for a 200 response).
-    email_ok = await _send_feedback_email(
+    # 1. Send the email (primary — must succeed for a 200 response), unless
+    #    the client already has.
+    email_ok = feedback.email_sent or await _send_feedback_email(
         feedback.rating, feedback.subject, feedback.comment,
     )
 

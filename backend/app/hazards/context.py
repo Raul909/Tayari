@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.hazards import feeds, volcano_catalog
-from app.hazards.cache import TTLCache, geo_key
+from app.hazards.cache import TTLCache, coalesce, geo_key
 from app.hazards.geo import probe_terrain
 from app.models.hazards import HazardEvent, TerrainProfile
 from app.models.schemas import DailyDischarge
@@ -87,6 +87,20 @@ async def _discharge(latitude: float, longitude: float) -> Optional[list[DailyDi
 
 
 async def build_context(latitude: float, longitude: float) -> HazardContext:
+    """
+    Gather every feed for a location, once per location at a time.
+
+    The profile and the advisory endpoints both need a context, and a reader
+    opening a card fires the second while the first may still be gathering, so
+    concurrent builds for the same point share one set of upstream calls.
+    """
+    return await coalesce(
+        f"context:{latitude:.4f},{longitude:.4f}",
+        lambda: _gather(latitude, longitude),
+    )
+
+
+async def _gather(latitude: float, longitude: float) -> HazardContext:
     """
     Gather every feed for a location in parallel.
 

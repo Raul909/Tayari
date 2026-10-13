@@ -75,6 +75,17 @@ def _normalize_db_url(url: str) -> tuple[str, dict]:
         if libpq_ssl or query:
             connect_args["ssl"] = True
 
+        # Supabase's transaction pooler (port 6543) hands each transaction to
+        # whichever server connection is free, so a statement asyncpg prepared
+        # on one connection is missing — or already defined — on the next.
+        # Disable asyncpg's statement cache and give every prepared statement
+        # a unique name, which is what the pooler supports.
+        if ":6543/" in url:
+            from uuid import uuid4
+
+            connect_args["statement_cache_size"] = 0
+            connect_args["prepared_statement_name_func"] = lambda: f"__tayari_{uuid4().hex}__"
+
     # SQLite (default) needs no special handling beyond the aiosqlite driver,
     # which the default DATABASE_URL already specifies.
     return url, connect_args
@@ -82,11 +93,24 @@ def _normalize_db_url(url: str) -> tuple[str, dict]:
 
 _db_url, _connect_args = _normalize_db_url(settings.database_url)
 
+# Pool sizing for a free tier. One app process serves everyone, so the pool is
+# its whole share of the database. Five steady plus five burst connections is
+# well inside Supabase's free connection cap, and a 10 s wait for a free one
+# turns an overload into a quick 503 instead of a request that hangs until the
+# 45 s request timeout. Recycling every five minutes stays ahead of the pooler,
+# which drops idle server connections on its own schedule.
+_pool_args = (
+    {"pool_size": 5, "max_overflow": 5, "pool_timeout": 10, "pool_recycle": 300}
+    if _db_url.startswith("postgresql")
+    else {}
+)
+
 engine = create_async_engine(
     _db_url,
     echo=False,
     pool_pre_ping=True,  # recycle stale Neon connections transparently
     connect_args=_connect_args,
+    **_pool_args,
 )
 
 SessionLocal = async_sessionmaker(

@@ -8,8 +8,11 @@ truth moves, and the cache must not grow without bound, because its keys are
 geographic and therefore unbounded in principle.
 """
 
+import asyncio
 import time
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional, TypeVar
+
+T = TypeVar("T")
 
 
 class TTLCache:
@@ -52,3 +55,40 @@ def geo_key(latitude: float, longitude: float, precision: int = 2) -> str:
     identical upstream calls for answers that do not vary at that scale.
     """
     return f"{round(latitude, precision)},{round(longitude, precision)}"
+
+
+# ─── Request coalescing ───────────────────────────────────────────────────────
+#
+# A cache only helps the second visitor. Traffic to an early-warning service does
+# not arrive evenly: it arrives all at once, from the same town, the moment
+# something happens there. Without coalescing, the first hundred people to check
+# Beledweyne after a flood warning each start their own seven upstream calls,
+# because none of them can see a cached answer yet. With it, the first request
+# does the work and the other ninety-nine wait for its result.
+
+_inflight: dict[str, "asyncio.Task[Any]"] = {}
+
+
+def _forget(key: str, task: "asyncio.Task[Any]") -> None:
+    if _inflight.get(key) is task:
+        del _inflight[key]
+    # Mark a failure as retrieved even if every waiter has gone, so it is not
+    # logged a second time as "Task exception was never retrieved".
+    if not task.cancelled():
+        task.exception()
+
+
+async def coalesce(key: str, factory: Callable[[], Awaitable[T]]) -> T:
+    """
+    Run `factory()` once per key at a time; concurrent callers share the result.
+
+    The work runs in its own task and every caller awaits it through `shield`,
+    so a caller that gives up (a closed connection, a request timeout) cannot
+    cancel the work the others are still waiting on.
+    """
+    task = _inflight.get(key)
+    if task is None:
+        task = asyncio.ensure_future(factory())
+        _inflight[key] = task
+        task.add_done_callback(lambda t: _forget(key, t))
+    return await asyncio.shield(task)

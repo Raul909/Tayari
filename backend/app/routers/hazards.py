@@ -15,9 +15,11 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import Response
 
 from app.hazards import feeds
 from app.hazards.advisory import generate_hazard_advisory, sms_text
+from app.hazards.cache import TTLCache, coalesce
 from app.hazards.context import build_context
 from app.hazards.engine import assess_location, global_events
 from app.hazards.registry import catalog
@@ -32,6 +34,13 @@ from app.models.schemas import Language, UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Finished profiles, as the JSON bytes that go on the wire. The feed caches below
+# this already make a repeat assessment cheap in network terms; this makes it
+# cheap in CPU terms too, which is the scarcer resource on a 0.1-vCPU instance —
+# running nine assessors and serialising the result costs more than reading a
+# cached bundle. Short-lived, because the earthquake half of a profile is live.
+_profile_cache = TTLCache(ttl_seconds=45, max_entries=1024)
 
 
 def _validate_coords(latitude: float, longitude: float) -> None:
@@ -86,6 +95,26 @@ async def assess(
     """
     _validate_coords(lat, lon)
 
+    key = f"{lat:.4f},{lon:.4f}|{name or ''}|{country or ''}|{(country_code or '').lower()}"
+    body = _profile_cache.get(key)
+    if body is None:
+        # Everyone asking about the same place at the same moment shares one
+        # assessment — see `coalesce`.
+        body = await coalesce(
+            f"profile:{key}",
+            lambda: _assess_to_json(lat, lon, name, country, country_code, key),
+        )
+    return Response(content=body, media_type="application/json")
+
+
+async def _assess_to_json(
+    lat: float,
+    lon: float,
+    name: Optional[str],
+    country: Optional[str],
+    country_code: Optional[str],
+    key: str,
+) -> bytes:
     place = LocationRef(
         latitude=lat, longitude=lon, name=name, country=country, country_code=country_code
     )
@@ -99,7 +128,13 @@ async def assess(
         logger.exception(f"Context build failed at ({lat}, {lon}): {e}")
         raise HTTPException(status_code=502, detail="Hazard data feeds are unavailable")
 
-    return await assess_location(lat, lon, place=place, ctx=ctx)
+    profile = await assess_location(lat, lon, place=place, ctx=ctx)
+    body = profile.model_dump_json().encode()
+    # A profile assembled while a feed was down is served, but not kept: the
+    # next request should try the feed again rather than inherit the gap.
+    if not profile.partial:
+        _profile_cache.set(key, body)
+    return body
 
 
 @router.get("/hazards/{hazard}/advisory")
@@ -168,7 +203,10 @@ async def live_events(
     becomes a continuous band tracing every plate boundary, which is a beautiful
     picture of plate tectonics and a useless early-warning display.
     """
-    return await global_events(min_magnitude=min_magnitude, days=days)
+    return await coalesce(
+        f"events:{min_magnitude}:{days}",
+        lambda: global_events(min_magnitude=min_magnitude, days=days),
+    )
 
 
 # ─── Places ───────────────────────────────────────────────────────────────────

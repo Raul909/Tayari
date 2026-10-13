@@ -130,23 +130,70 @@ class ConcurrencyLimitMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(ConcurrencyLimitMiddleware)
 
+# ─── Caching policy ──────────────────────────────────────────────────────────
+#
+# The API sits behind Tayari's edge gateway (frontend/functions/api), which caches
+# whatever this table marks public and nothing else. That makes this table the
+# single place that decides how fresh each answer must be, so it is written per
+# route rather than as one blanket header:
+#
+#   max-age                 how long a browser or the phone app may reuse it
+#   s-maxage                how long the edge serves it without asking us
+#   stale-while-revalidate  how much longer the edge may serve it while it
+#                           fetches a fresh copy in the background
+#   stale-if-error          how long the edge may keep serving it when this
+#                           server is asleep, overloaded or down
+#
+# The last one is what lets Tayari stay up on a free instance that sleeps: the
+# edge keeps answering for places people have recently checked, and every client
+# shows the data's own timestamp, so a stale answer is never mistaken for a new one.
+#
+# Anything not listed — accounts, saved preferences, alert history with phone
+# numbers in it — is `private, no-store` and never cached anywhere shared.
+
+import re
+
+_CACHE_POLICY = [
+    # Live: earthquakes feed tsunami warnings, which count in minutes.
+    (re.compile(r"^/api/hazards$"), "public, max-age=60, s-maxage=60, stale-while-revalidate=60, stale-if-error=86400"),
+    (re.compile(r"^/api/hazards/events/live$"), "public, max-age=60, s-maxage=120, stale-while-revalidate=120, stale-if-error=86400"),
+    # Generated text, already cached for hours on the server.
+    (re.compile(r"^/api/hazards/[a-z_]+/advisory$"), "public, max-age=300, s-maxage=1800, stale-while-revalidate=1800, stale-if-error=86400"),
+    (re.compile(r"^/api/advisory/[\w-]+$"), "public, max-age=300, s-maxage=1800, stale-while-revalidate=1800, stale-if-error=86400"),
+    # Hydrology moves hourly.
+    (re.compile(r"^/api/forecasts/[\w-]+(/history)?$"), "public, max-age=60, s-maxage=600, stale-while-revalidate=600, stale-if-error=86400"),
+    (re.compile(r"^/api/basins$"), "public, max-age=300, s-maxage=3600, stale-while-revalidate=3600, stale-if-error=604800"),
+    # Reference data: places and the hazard catalogue barely change.
+    (re.compile(r"^/api/hazards/types$"), "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400, stale-if-error=604800"),
+    (re.compile(r"^/api/places/search$"), "public, max-age=86400, s-maxage=604800, stale-if-error=604800"),
+    # Community reports: shared, but people expect a new one to show up quickly.
+    # The edge also drops this entry whenever a report is posted through it.
+    (re.compile(r"^/api/reports$"), "public, max-age=0, s-maxage=15, stale-while-revalidate=15, stale-if-error=3600"),
+    # Uploaded photos and voice notes get a new name for every file.
+    (re.compile(r"^/(uploads|static/audio)/"), "public, max-age=604800, s-maxage=2592000, immutable"),
+]
+
+
+def cache_policy(path: str) -> str:
+    for pattern, policy in _CACHE_POLICY:
+        if pattern.match(path):
+            return policy
+    return "private, no-store"
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    """Add basic security headers against XSS and enable client caching for GET endpoints."""
+    """Security headers on every response, and the caching policy on GETs."""
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    if (
-        request.method == "GET"
-        and response.status_code == 200
-        and not request.url.path.startswith("/health")
-    ):
-        # Cache GET endpoints for 60 seconds on the client / CDN edge. Health
-        # checks are exempt: /health is Render's liveness probe and /health/db
-        # must actually reach the database on every hit (see below), so neither
-        # may be served from a cache.
-        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+    if request.method == "GET" and response.status_code == 200:
+        response.headers["Cache-Control"] = cache_policy(request.url.path)
+    elif "cache-control" not in response.headers:
+        # Errors are never cached: a 503 during a cold start must not be served
+        # back to the next hundred visitors as if it were the answer.
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 # CORS — allow frontend (dev + production)
@@ -235,6 +282,24 @@ async def health():
         "status": "healthy",
         "version": settings.app_version,
         "commit": os.getenv("RENDER_GIT_COMMIT", "unknown")[:12],
+    }
+
+
+@app.get("/api/health/client")
+async def health_client(request: Request):
+    """
+    What this server can see of the caller: the address the rate limiter keys
+    on, and the forwarding headers it was derived from. Under /api so it can be
+    called through the edge gateway, which is the chain worth checking: that
+    Cloudflare edge → Render still delivers the real client address — if `client_ip` ever shows a Cloudflare or private address, every
+    visitor is sharing one rate-limit bucket again.
+    """
+    from app.net import client_ip
+
+    return {
+        "client_ip": client_ip(request),
+        "x_forwarded_for": request.headers.get("x-forwarded-for"),
+        "via_edge": request.headers.get("x-tayari-edge") is not None,
     }
 
 
