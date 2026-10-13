@@ -9,32 +9,9 @@
  * is told about provenance can never drift from what the server actually queries.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { apiFetch } from '@/lib/http';
 
-export const HAZARD_META = {
-  flood: { label: 'River flooding', short: 'Flood', icon: 'flood', color: '#2E6F8E' },
-  earthquake: { label: 'Earthquake', short: 'Quake', icon: 'earthquake', color: '#8A5A2B' },
-  tsunami: { label: 'Tsunami', short: 'Tsunami', icon: 'tsunami', color: '#1F5F73' },
-  volcano: { label: 'Volcanic activity', short: 'Volcano', icon: 'volcano', color: '#A2412A' },
-  cyclone: { label: 'Cyclone & severe storm', short: 'Storm', icon: 'cyclone', color: '#4C5B8C' },
-  extreme_heat: { label: 'Extreme heat', short: 'Heat', icon: 'thermostat', color: '#C2603A' },
-  wildfire: { label: 'Wildfire weather', short: 'Wildfire', icon: 'local_fire_department', color: '#B4501F' },
-  drought: { label: 'Drought', short: 'Drought', icon: 'wb_sunny', color: '#9A7B3F' },
-  landslide: { label: 'Landslide', short: 'Landslide', icon: 'landslide', color: '#6B5B45' },
-};
-
-export function hazardMeta(hazard) {
-  return HAZARD_META[hazard] || { label: hazard, short: hazard, icon: 'warning', color: '#6b6558' };
-}
-
-/** How fast a hazard arrives, in words the reader can act on. */
-export const ONSET_LABELS = {
-  instant: 'No warning possible',
-  minutes: 'Minutes',
-  hours: 'Hours',
-  days: 'Days',
-  seasons: 'Weeks to months',
-};
+export { HAZARD_META, hazardMeta, ONSET_LABELS } from '@/lib/hazard-meta';
 
 const STORAGE_KEY = 'tayari.location';
 
@@ -76,7 +53,7 @@ export function clearLocation() {
 }
 
 async function getJson(path, { signal } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, { signal });
+  const res = await apiFetch(`${path}`, { signal });
   if (!res.ok) {
     const detail = await res
       .json()
@@ -172,7 +149,7 @@ export async function sendHazardAlert({
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}/api/alerts/hazard/send`, {
+  const res = await apiFetch(`/api/alerts/hazard/send`, {
     method: 'POST',
     headers,
     body: JSON.stringify({

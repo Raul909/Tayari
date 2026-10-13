@@ -8,6 +8,7 @@ import HazardDetail from '@/components/HazardDetail';
 import LocationBar from '@/components/LocationBar';
 import { useToast } from '@/components/Toast';
 import { MAP_STYLE_URL, RISK_COLORS } from '@/lib/constants';
+import { EXAMPLE_PLACES, RISK_WORDS } from '@/lib/hazard-meta';
 import {
   fetchHazardProfile,
   fetchLiveEvents,
@@ -44,6 +45,8 @@ export default function HazardDashboard() {
 
   const [location, setLocation] = useState(null);
   const [profile, setProfile] = useState(null);
+  // Minutes since the server assessed this profile; see `minutesOld`.
+  const [staleMinutes, setStaleMinutes] = useState(0);
   const [selected, setSelected] = useState(null);
   const [events, setEvents] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -74,6 +77,7 @@ export default function HazardDashboard() {
           if (id !== profileId.current) return;
           named = place ? { ...target, ...place } : target;
           setProfile(data);
+          setStaleMinutes(minutesOld(data.generated_at));
           setSelected(null);
           const resolved = { ...named, ...data.location, ...(place || {}) };
           setLocation(resolved);
@@ -84,6 +88,7 @@ export default function HazardDashboard() {
         const data = await fetchHazardProfile(target);
         if (id !== profileId.current) return;
         setProfile(data);
+        setStaleMinutes(minutesOld(data.generated_at));
         setSelected(null);
         const resolved = { ...target, ...data.location, name: target.name };
         setLocation(resolved);
@@ -342,6 +347,9 @@ export default function HazardDashboard() {
                 </button>
               ))}
             </div>
+            <p className="hazard-empty-lite">
+              On a slow connection or an older phone? <a href="/lite">Use the simple version</a>.
+            </p>
           </div>
         )}
 
@@ -394,6 +402,12 @@ export default function HazardDashboard() {
                   What to do about {hazardMeta(top.hazard).short.toLowerCase()}
                   <Icon name="arrow_forward" size={16} />
                 </button>
+              )}
+              {staleMinutes >= 10 && (
+                <p className="hazard-summary-note">
+                  Live data is not responding, so this is Tayari&apos;s last check, from{' '}
+                  {formatAge(staleMinutes)} ago.
+                </p>
               )}
               {profile.partial && (
                 <p className="hazard-summary-note">
@@ -470,24 +484,19 @@ export default function HazardDashboard() {
   );
 }
 
-// Plain words for the overall level. A bare "LOW" badge reads as a label, not
-// an answer; the banner should say the answer.
-const RISK_WORDS = {
-  LOW: 'All clear for now',
-  MODERATE: 'Stay alert',
-  HIGH: 'Take action',
-  EXTREME: 'Act now — danger',
-};
+// How old an assessment is. A fresh answer is seconds old; one the edge gateway
+// kept from before an outage (edge/gateway.js, stale-if-error) can be hours old,
+// and the reader needs to know that before acting on it.
+function minutesOld(generatedAt) {
+  const at = Date.parse(generatedAt);
+  return Number.isFinite(at) ? Math.max(0, Math.floor((Date.now() - at) / 60000)) : 0;
+}
 
-// One-tap starting points for someone who just wants to see what this does,
-// spread across the hazards and the regions Tayari was built for.
-const EXAMPLE_PLACES = [
-  { name: 'Beledweyne', country: 'Somalia', country_code: 'so', latitude: 4.74, longitude: 45.2 },
-  { name: 'Nairobi', country: 'Kenya', country_code: 'ke', latitude: -1.2864, longitude: 36.8172 },
-  { name: 'Jakarta', country: 'Indonesia', country_code: 'id', latitude: -6.2088, longitude: 106.8456 },
-  { name: 'Manila', country: 'Philippines', country_code: 'ph', latitude: 14.5995, longitude: 120.9842 },
-  { name: 'Naples', country: 'Italy', country_code: 'it', latitude: 40.8518, longitude: 14.2681 },
-];
+function formatAge(minutes) {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
+}
 
 function escapeHtml(str) {
   return String(str)

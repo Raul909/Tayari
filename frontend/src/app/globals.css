@@ -2663,6 +2663,19 @@ tr:hover td { background: var(--surface-sunken); }
   gap: 8px;
 }
 
+.hazard-empty-lite {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.noscript-note {
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+
 .hazard-empty-hint {
   font-size: 12px;
   color: var(--text-muted);

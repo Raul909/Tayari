@@ -2,13 +2,13 @@
  * Backend API client for Tayari.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { apiFetch, assetUrl } from '@/lib/http';
 
 /**
  * Fetch all basins with current risk levels.
  */
 export async function fetchBasins() {
-  const res = await fetch(`${API_BASE}/api/basins`);
+  const res = await apiFetch(`/api/basins`);
   if (!res.ok) throw new Error(`Failed to fetch basins: ${res.status}`);
   return res.json();
 }
@@ -17,8 +17,7 @@ export async function fetchBasins() {
  * Fetch full forecast for a basin.
  */
 export async function fetchForecast(basinId, role = 'general', language = 'en') {
-  const res = await fetch(
-    `${API_BASE}/api/forecasts/${basinId}?role=${role}&language=${language}`
+  const res = await apiFetch(`/api/forecasts/${basinId}?role=${role}&language=${language}`
   );
   if (!res.ok) throw new Error(`Failed to fetch forecast: ${res.status}`);
   return res.json();
@@ -28,8 +27,7 @@ export async function fetchForecast(basinId, role = 'general', language = 'en') 
  * Fetch historical discharge for hindcast.
  */
 export async function fetchHistory(basinId, startDate, endDate) {
-  const res = await fetch(
-    `${API_BASE}/api/forecasts/${basinId}/history?start_date=${startDate}&end_date=${endDate}`
+  const res = await apiFetch(`/api/forecasts/${basinId}/history?start_date=${startDate}&end_date=${endDate}`
   );
   if (!res.ok) throw new Error(`Failed to fetch history: ${res.status}`);
   return res.json();
@@ -39,8 +37,7 @@ export async function fetchHistory(basinId, startDate, endDate) {
  * Fetch advisory in a specific role and language.
  */
 export async function fetchAdvisory(basinId, role = 'general', language = 'en') {
-  const res = await fetch(
-    `${API_BASE}/api/advisory/${basinId}?role=${role}&language=${language}`
+  const res = await apiFetch(`/api/advisory/${basinId}?role=${role}&language=${language}`
   );
   if (!res.ok) throw new Error(`Failed to fetch advisory: ${res.status}`);
   return res.json();
@@ -54,7 +51,7 @@ export async function sendAlert(basinId, role, language, phoneNumbers, token) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const res = await fetch(`${API_BASE}/api/alerts/send`, {
+  const res = await apiFetch(`/api/alerts/send`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -73,9 +70,9 @@ export async function sendAlert(basinId, role, language, phoneNumbers, token) {
  */
 export async function fetchAlertHistory(basinId = null) {
   const url = basinId
-    ? `${API_BASE}/api/alerts/history?basin_id=${basinId}`
-    : `${API_BASE}/api/alerts/history`;
-  const res = await fetch(url);
+    ? `/api/alerts/history?basin_id=${basinId}`
+    : `/api/alerts/history`;
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error(`Failed to fetch alert history: ${res.status}`);
   return res.json();
 }
@@ -84,7 +81,7 @@ export async function fetchAlertHistory(basinId = null) {
  * Submit a community report.
  */
 export async function submitReport(report) {
-  const res = await fetch(`${API_BASE}/api/reports`, {
+  const res = await apiFetch(`/api/reports`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(report),
@@ -105,7 +102,7 @@ export async function submitReportWithPhoto(fields, photoFile) {
   });
   if (photoFile) formData.append('photo', photoFile);
 
-  const res = await fetch(`${API_BASE}/api/reports/upload`, {
+  const res = await apiFetch(`/api/reports/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -117,7 +114,7 @@ export async function submitReportWithPhoto(fields, photoFile) {
  * Attach advice/guidance to a community report.
  */
 export async function submitAdvice(reportId, advice) {
-  const res = await fetch(`${API_BASE}/api/reports/${reportId}/advice`, {
+  const res = await apiFetch(`/api/reports/${reportId}/advice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(advice),
@@ -131,9 +128,9 @@ export async function submitAdvice(reportId, advice) {
  */
 export async function fetchReports(basinId = null) {
   const url = basinId
-    ? `${API_BASE}/api/reports?basin_id=${basinId}`
-    : `${API_BASE}/api/reports`;
-  const res = await fetch(url);
+    ? `/api/reports?basin_id=${basinId}`
+    : `/api/reports`;
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error(`Failed to fetch reports: ${res.status}`);
   return res.json();
 }
@@ -142,15 +139,14 @@ export async function fetchReports(basinId = null) {
  * Resolve a backend-relative asset path (e.g. /uploads/…) to a full URL.
  */
 export function resolveAssetUrl(path) {
-  if (!path) return null;
-  return path.startsWith('http') ? path : `${API_BASE}${path}`;
+  return assetUrl(path);
 }
 
 /**
  * Send a chat message about an advisory.
  */
 export async function sendChatMessage(basinId, message, role = 'general', language = 'en', sessionMessages = [], userId = null) {
-  const res = await fetch(`${API_BASE}/api/chat/${basinId}`, {
+  const res = await apiFetch(`/api/chat/${basinId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, role, language, session_messages: sessionMessages, user_id: userId }),
@@ -161,10 +157,14 @@ export async function sendChatMessage(basinId, message, role = 'general', langua
 
 export const RATING_LABELS = { 1: 'Very poor', 2: 'Poor', 3: 'Okay', 4: 'Good', 5: 'Very good' };
 
-const FEEDBACK_EMAIL = 'contact@launchpixel.in';
+// FormSubmit's alias for the feedback inbox, issued
+// when the form was activated for tayari.pages.dev. Using it instead of the
+// address keeps the inbox out of this public bundle. Same alias as the backend,
+// the lite pages and the phone app.
+const FORMSUBMIT_ENDPOINT = 'https://formsubmit.co/ajax/bc7b96d4113e366589fd2e528232a340';
 
 /**
- * Deliver a feedback email directly to contact@launchpixel.in via FormSubmit.co.
+ * Deliver a feedback email directly to the feedback inbox via FormSubmit.co.
  * Returns true only when FormSubmit confirms delivery.
  *
  * The browser is the reliable place to do this: it attaches the Origin header
@@ -184,7 +184,7 @@ async function deliverFeedbackViaFormSubmit(rating, subject, comment) {
     _subject: `Tayari Feedback - ${subjectText} (${ratingText})`,
   };
 
-  const res = await fetch(`https://formsubmit.co/ajax/${FEEDBACK_EMAIL}`, {
+  const res = await fetch(FORMSUBMIT_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -197,22 +197,30 @@ async function deliverFeedbackViaFormSubmit(rating, subject, comment) {
 /**
  * Submit user feedback.
  *
- * Email delivery goes straight to FormSubmit.co from the browser — the reliable
- * path (see deliverFeedbackViaFormSubmit). In parallel we best-effort POST to
- * the backend so the feedback is also recorded in the database for analytics;
- * that call is fire-and-forget and its failure (cold start, DB down, or the
- * backend's own blocked FormSubmit attempt) never fails the submission.
+ * The email goes straight from the browser to FormSubmit.co — the reliable path
+ * (see deliverFeedbackViaFormSubmit). The backend is then told about it, so the
+ * feedback is also recorded for analytics; `email_sent` stops the backend from
+ * sending the same email a second time. That call is fire-and-forget: a cold
+ * start or a database outage must never fail a submission that was delivered.
  */
 export async function sendFeedback(rating, subject, comment) {
-  // Best-effort DB record — don't await, don't let it reject the submission.
-  fetch(`${API_BASE}/api/feedback`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rating, subject, comment }),
-  }).catch(() => {});
+  const delivered = await deliverFeedbackViaFormSubmit(rating, subject, comment).catch(() => false);
+  const record = (emailSent) =>
+    apiFetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, subject, comment, email_sent: emailSent }),
+    });
 
-  const delivered = await deliverFeedbackViaFormSubmit(rating, subject, comment);
-  if (!delivered) {
+  if (delivered) {
+    record(true).catch(() => {});
+    return { success: true, message: 'Feedback sent' };
+  }
+
+  // FormSubmit did not take it: let the backend try to send it, which also
+  // stores it, so a FormSubmit outage loses nothing.
+  const res = await record(false).catch(() => null);
+  if (!res?.ok) {
     throw new Error('Could not deliver feedback. Please try again later.');
   }
   return { success: true, message: 'Feedback sent' };

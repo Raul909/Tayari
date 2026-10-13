@@ -5,9 +5,16 @@ action system. Built with Next.js 16 (App Router) and vanilla CSS, statically
 exported and served from Cloudflare Pages at
 **[tayari.pages.dev](https://tayari.pages.dev)**.
 
-It is a client of the FastAPI backend — there is no server-side rendering at
-request time and no API routes here. Every page runs in the browser and talks to
-the backend over `NEXT_PUBLIC_API_URL`.
+The pages are static: no server-side rendering at request time. Two things run
+at Cloudflare's edge as Pages Functions (`functions/`, code in `edge/`):
+
+- **`/api/*` — the API gateway** (`edge/gateway.js`). Proxies to the FastAPI
+  backend on Render, caches what the backend marks `public`, and serves the last
+  saved answer while Render is asleep or down. In production the app calls the
+  API on its own origin (`NEXT_PUBLIC_API_URL` is empty) and falls back to
+  Render directly if the gateway itself fails (`src/lib/http.js`).
+- **`/lite` — Tayari Lite** (`edge/lite.js`). The hazard check and advice as
+  plain HTML with no JavaScript, for any phone.
 
 ## What's here
 
@@ -81,6 +88,15 @@ document head, and the UI uses system fonts so nothing blocks first paint.
 MapLibre is only ever requested by the dashboard — it used to be warmed from
 every route, which cost each page ~270 KB of script it never ran.
 
+### Works on any browser
+
+The build targets Chrome 69, Safari 12, Firefox 68 and up (`browserslist` in
+`package.json`); syntax is compiled down to that floor and Next.js polyfills
+the newer built-ins it uses. A tiny inline script in `src/app/layout.js` runs
+before anything else and sends older browsers, proxy browsers (Opera Mini) and
+KaiOS phones to `/lite`; a browser with JavaScript off gets there through a
+`<noscript>` redirect. Add `?full=1` to any URL to skip the redirect.
+
 `public/_headers` tells Cloudflare Pages to serve the content-hashed
 `/_next/static/*` files as immutable for a year, so repeat visits skip those
 requests entirely.
@@ -114,7 +130,7 @@ a change means a rebuild:
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | No — defaults to `http://localhost:8000` | The FastAPI backend |
+| `NEXT_PUBLIC_API_URL` | No — defaults to `http://localhost:8000` | The FastAPI backend. Empty in production (`.env.production`): the API is on the same origin, behind the edge gateway |
 | `NEXT_PUBLIC_SUPABASE_URL` | For accounts | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | For accounts | Supabase publishable key (`NEXT_PUBLIC_SUPABASE_ANON_KEY` is also accepted) |
 
@@ -157,8 +173,8 @@ notched phones.
 |---|---|
 | `npm run dev` | Start the dev server |
 | `npm run build` | Static export to `out/` |
-| `npm run build:prod` | Static export pointed at the production API |
-| `npm run deploy` | Production build, then `wrangler pages deploy out` |
+| `npm run build:prod` | Static export for production (same-origin API) |
+| `npm run deploy` | Production build, then `wrangler pages deploy out` (static files + edge functions) |
 | `npm run start` | Serve the production build |
 | `npm run lint` | Lint |
 
@@ -166,7 +182,15 @@ notched phones.
 
 `next.config.mjs` sets `output: 'export'`, so a build produces a fully static
 `out/` directory. `wrangler.toml` publishes it to Cloudflare Pages as the
-`tayari` project. `npm run deploy` does both in one step.
+`tayari` project, together with the edge functions in `functions/`. `npm run
+deploy` does both in one step.
+
+To try the edge functions locally against a local backend:
+
+```bash
+npm run build:prod
+npx wrangler pages dev out --binding API_ORIGIN=http://127.0.0.1:8000
+```
 
 ---
 

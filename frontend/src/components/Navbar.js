@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import UserMenu from '@/components/UserMenu';
@@ -37,6 +37,12 @@ const LINKS = [
 export default function Navbar() {
   const [showFeedback, setShowFeedback] = useState(false);
   const pathname = usePathname();
+
+  // Tells the gate script in the root layout that the app started, so it does
+  // not offer the simple version to a browser that is merely slow.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-ready', '1');
+  }, []);
 
   const isActive = (href) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
