@@ -91,12 +91,14 @@ graph TD
         LLM -.->|model unavailable| TPL[Human-written safety actions<br/>per hazard, per role]
     end
 
-    LLM & TPL --> WEB[Next.js PWA<br/>tayari.pages.dev]
+    LLM & TPL --> EDGE[Edge gateway on Cloudflare<br/>cache · serve-stale · fallback]
     LLM & TPL --> SMS[Twilio SMS]
-    LLM & TPL --> APP[Flutter app<br/>offline-first]
+    EDGE --> WEB[Next.js PWA<br/>tayari.pages.dev]
+    EDGE --> LITE[Tayari Lite<br/>plain HTML, any phone]
+    EDGE --> APP[Flutter app<br/>offline-first]
 
-    APP -->|Geotagged photo reports| API
-    WEB -->|Advice threads| API
+    APP -->|Geotagged photo reports| EDGE
+    WEB -->|Advice threads| EDGE
     API --> DB[(Supabase Postgres)]
 ```
 
@@ -111,6 +113,21 @@ graph TD
 Community reports, their advice threads, and sent-alert history are persisted to **Supabase (managed Postgres)** through the backend. Both the web dashboard and the mobile app write and read through the same API, so a report filed from a phone in the field shows up on a coordinator's dashboard — and vice versa — backed by one shared database. Supabase also handles user authentication (sign-up, login, and password reset). Locally the database falls back to SQLite so you can run everything with zero setup.
 
 A small **Cloudflare Worker** does double duty: it proxies Open-Meteo requests (avoiding upstream rate limits) and pings the Render backend on a cron schedule so free-tier cold starts never delay a warning.
+
+### Built to stay up on free tiers
+
+Everything runs on free plans, and the weak link is the API: one Render instance with a tenth of a CPU that sleeps after fifteen idle minutes. Traffic to a warning service is the opposite of even — it arrives all at once, from one place, when something happens there — so the design makes sure most requests never reach Render, and the ones that must can survive it being slow or asleep.
+
+- **Edge gateway.** The web app, the lite pages and the phone app call the API through Cloudflare Pages Functions on `tayari.pages.dev` (`frontend/edge/gateway.js`). Answers are cached at the edge for as long as the API's own `Cache-Control` allows — a minute for a live hazard profile, a day for the hazard catalogue — so a town's thousandth visitor costs Render nothing. Same-origin calls also skip the CORS preflight, a whole round trip per request on a 2G link.
+- **Serve stale, say so.** When Render is asleep, overloaded or down, the gateway serves the last answer it saved (up to a day old for profiles) after at most six seconds, and every client shows that answer's age instead of passing it off as live.
+- **One assessment per place, however many ask.** Concurrent requests for the same location share one set of upstream calls, one assessment and one AI advisory (`coalesce` in `backend/app/hazards/cache.py`); twenty simultaneous requests for a new place make 8 upstream calls, not 160. Finished profiles are kept for 45 s as ready-to-send JSON, so a burst costs no CPU either.
+- **Per-person rate limits.** Limits are keyed on the real client address, recovered from `X-Forwarded-For` by skipping Cloudflare and private hops (`backend/app/net.py`). Keyed on the socket peer, as before, every visitor shared one bucket behind Render's proxy.
+- **No single point of failure added.** If the gateway itself fails — Cloudflare's free plan has a daily allowance — the web app and the phone app go straight to Render.
+- **Private data never cached.** Anything the API does not mark `public` (accounts, saved preferences, alert history) passes through untouched.
+
+### Works on any phone
+
+The main site supports browsers back to Chrome 69, Safari 12 and Firefox 68 (2018), compiled down and checked chunk by chunk. Anything older — Symbian, KaiOS, Opera Mini, browsers with JavaScript off — is sent automatically to **[Tayari Lite](https://tayari.pages.dev/lite)**: the same nine-hazard check and advice as plain HTML pages of 2–4 KB, rendered at the edge with no JavaScript at all, including a feedback form and an approximate-location option that needs no GPS.
 
 ## 📍 Calibrated Flood Basins
 
@@ -192,7 +209,7 @@ I chose tools that are fast, reliable, and perfectly suited for a machine-learni
 - **Maps & Viz:** MapLibre GL JS, flutter_maplibre_gl & fl_chart — *Beautiful, interactive, and open-source.*
 - **Data feeds:** USGS (FDSN catalog + the 30-day summary feed), Smithsonian Global Volcanism Program, Copernicus GloFAS & DEM, Open-Meteo — *all public, all keyless, no vendor lock-in on the thing that matters most.*
 - **AI & Comms:** Groq API (Llama 3.3 70B) & Twilio — *Multilingual generation with a translation-quality guard, and reliable SMS delivery.*
-- **Hosting:** Cloudflare Pages (web, free at [tayari.pages.dev](https://tayari.pages.dev)), Render (API), and a Cloudflare Worker for proxying + keep-alive.
+- **Hosting:** Cloudflare Pages (web, lite pages and the edge API gateway, free at [tayari.pages.dev](https://tayari.pages.dev)), Render (API), and a Cloudflare Worker for proxying + keep-alive. Feedback is delivered by FormSubmit.co.
 
 ---
 
