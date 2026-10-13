@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each version corresponds to a `v*` git tag; pushing a tag builds and publishes the
 split-per-ABI release APKs via the "Build and Release APK" workflow.
 
+## [1.10.0] - 2026-10-13
+### Changed
+- **Faster, and up when the server is asleep.** The app now reaches Tayari
+  through its edge network, which answers from a nearby copy for places people
+  have checked recently. When the server is waking up or down, you get the last
+  saved answer straight away, with how old it is, instead of a long wait. If the
+  edge network itself is unavailable, the app goes to the server directly.
+- **Clear icons instead of emoji.** Each hazard has its own line icon in its
+  colour (flood, earthquake, tsunami, volcano, storm, heat, wildfire, drought,
+  landslide), and they look the same as on the website.
+- **Simpler feedback rating.** Rate from 1 to 5 (*Very poor* to *Very good*)
+  instead of picking a face.
+
+### Fixed
+- Feedback is delivered straight from the phone and recorded once, instead of
+  first waiting on a server that could not send it.
+
 ## [1.9.0] - 2026-10-04
 ### Added
 - **My area — nine hazards, anywhere.** The app now opens on the same question

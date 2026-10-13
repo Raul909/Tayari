@@ -89,7 +89,7 @@ class _MyAreaScreenState extends ConsumerState<MyAreaScreen> {
       setState(() {
         _profile = profile;
         _place = resolved;
-        _savedAt = DateTime.now();
+        _savedAt = HazardCache.assessedAt(profile);
       });
       await cache.savePlace(resolved);
       await cache.saveProfile(profile);

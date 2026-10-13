@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'edge_fallback.dart';
 
 /// Client for the location-based multi-hazard API — the same endpoints the web
 /// dashboard uses, so a place reads the same on a phone as on a laptop.
@@ -21,7 +22,9 @@ class HazardApi {
           baseUrl: '${ApiClient.assetBaseUrl}/api',
           connectTimeout: const Duration(seconds: 20),
           receiveTimeout: const Duration(seconds: 45),
-        ));
+        )) {
+    _dio.interceptors.add(EdgeFallback(_dio));
+  }
 
   /// The full multi-hazard profile for a coordinate.
   Future<Map<String, dynamic>> profile(Place place) async {
@@ -186,6 +189,14 @@ class HazardCache {
 
   Future<void> saveProfile(Map<String, dynamic> profile) async {
     await _prefs.setString(_kProfile, jsonEncode(profile));
-    await _prefs.setInt(_kSavedAt, DateTime.now().millisecondsSinceEpoch);
+    await _prefs.setInt(_kSavedAt, assessedAt(profile).millisecondsSinceEpoch);
   }
+
+  /// When the server assessed a profile. Not when the phone received it: the
+  /// edge network can hand back a copy saved hours ago while the server is
+  /// down, and "Updated 0 min ago" on that would be a lie about the one thing
+  /// the reader needs to judge it by.
+  static DateTime assessedAt(Map<String, dynamic> profile) =>
+      DateTime.tryParse(profile['generated_at']?.toString() ?? '')?.toLocal() ??
+      DateTime.now();
 }

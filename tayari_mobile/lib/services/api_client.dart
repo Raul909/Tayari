@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 
 import '../models/report.dart';
+import 'edge_fallback.dart';
 import 'groq_service.dart';
 
 /// Maps the app's human-readable report status to the backend enum value
@@ -22,6 +23,7 @@ class ApiClient {
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
   )) {
+    _dio.interceptors.add(EdgeFallback(_dio));
     // Log request/response only in debug builds. In the release APK this would
     // spend cycles stringifying every request and leak advisory/report payloads
     // into logcat for no benefit.
@@ -30,9 +32,10 @@ class ApiClient {
     }
   }
 
-  /// The deployed backend. Release builds (the distributed APK) always target
-  /// this — an end user's phone has no local dev server to reach.
-  static const _productionBaseUrl = 'https://tayari-api.onrender.com/api';
+  /// The deployed backend, through the edge gateway (see [EdgeFallback]).
+  /// Release builds (the distributed APK) always target this — an end user's
+  /// phone has no local dev server to reach.
+  static const _productionBaseUrl = '$kEdgeBase/api';
 
   /// Resolves the backend base URL:
   ///   1. An explicit `--dart-define=API_BASE_URL=...` always wins.
@@ -177,8 +180,11 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
-  /// Where feedback is delivered when the backend is unreachable.
-  static const _feedbackEmail = 'contact@launchpixel.in';
+  /// FormSubmit's alias for the feedback inbox, issued when the form was
+  /// activated for tayari.pages.dev. Using it instead of the address keeps the
+  /// inbox out of the APK. Same alias as the backend and the web app.
+  static const _formsubmitEndpoint =
+      'https://formsubmit.co/ajax/bc7b96d4113e366589fd2e528232a340';
 
   /// FormSubmit.co rejects requests without a browser-style referring origin
   /// (still HTTP 200, but body {"success": "false"}). Send the Tayari web
@@ -197,38 +203,43 @@ class ApiClient {
 
   /// Submit user feedback (opinion rating + optional subject/comment).
   ///
-  /// Primary path: POST to the backend `/feedback`, which emails
-  /// contact@launchpixel.in via FormSubmit.co and best-effort saves to the DB.
+  /// The email goes straight from the phone to FormSubmit.co, which refuses
+  /// requests from the backend's datacenter address. The backend is then told,
+  /// with `email_sent`, so it records the feedback without sending the email a
+  /// second time; that call is best-effort.
   ///
-  /// Fallback: if the backend is unreachable (Render cold-start, DB down, etc.),
-  /// post straight to FormSubmit.co from the device so feedback is never lost.
-  /// A 4xx from the backend (e.g. an out-of-range rating) is a real rejection —
-  /// it's surfaced to the caller instead of silently retried.
+  /// If FormSubmit fails, the backend is asked to deliver it instead — it
+  /// tries, and stores the feedback either way, so nothing is lost. A 4xx from
+  /// the backend (e.g. an out-of-range rating) is a real rejection and is
+  /// surfaced to the caller.
   Future<void> submitFeedback({
     required int rating,
     String? subject,
     String? comment,
   }) async {
-    // --- Try the backend first ---
+    final body = {'rating': rating, 'subject': subject, 'comment': comment};
+
+    if (await _deliverViaFormSubmit(rating, subject, comment)) {
+      _dio.post('/feedback', data: {...body, 'email_sent': true}).ignore();
+      return;
+    }
+
     try {
-      await _dio.post('/feedback', data: {
-        'rating': rating,
-        'subject': subject,
-        'comment': comment,
-      });
-      return; // 2xx — delivered.
+      await _dio.post('/feedback', data: {...body, 'email_sent': false});
     } on DioException catch (e) {
       final status = e.response?.statusCode;
-      // 4xx (e.g. a bad rating) is a genuine rejection — surface it, no retry.
       if (status != null && status >= 400 && status < 500) {
         final data = e.response?.data;
         final detail = data is Map ? data['detail']?.toString() : null;
         throw Exception(detail ?? 'Feedback rejected: $status');
       }
-      // Network error or 5xx → fall through to direct FormSubmit.co delivery.
+      throw Exception('Could not deliver feedback. Please try again later.');
     }
+  }
 
-    // --- Fallback: deliver straight to FormSubmit.co ---
+  /// Post feedback straight to FormSubmit.co. True only when FormSubmit
+  /// confirms delivery; never throws.
+  Future<bool> _deliverViaFormSubmit(int rating, String? subject, String? comment) async {
     final ratingText = _ratingLabels[rating] ?? '$rating';
     final subjectText = (subject == null || subject.isEmpty) ? 'General' : subject;
     final commentText =
@@ -238,30 +249,30 @@ class ApiClient {
         'Subject: $subjectText\n\n'
         'Comment:\n$commentText';
 
-    // A fresh Dio so the app's `/api` baseUrl isn't prepended to the absolute
-    // FormSubmit.co URL, and so the app-wide timeouts/interceptors don't apply.
-    final res = await Dio().post(
-      'https://formsubmit.co/ajax/$_feedbackEmail',
-      data: {
-        'rating': ratingText,
-        'subject': subjectText,
-        'message': message,
-        '_subject': 'Tayari Feedback - $subjectText ($ratingText)',
-      },
-      options: Options(headers: {
-        // Without a referring origin FormSubmit refuses the POST.
-        'Origin': _formsubmitOrigin,
-        'Referer': '$_formsubmitOrigin/',
-      }),
-    );
-    // FormSubmit reports real failures in the body, not the HTTP status: an
-    // unactivated form or missing origin returns 200 with {"success":"false"}.
-    final code = res.statusCode ?? 0;
-    final data = res.data;
-    final delivered = data is Map &&
-        data['success'].toString().toLowerCase() == 'true';
-    if (code < 200 || code >= 400 || !delivered) {
-      throw Exception('Could not deliver feedback. Please try again later.');
+    try {
+      // A fresh Dio so the app's `/api` baseUrl isn't prepended to the
+      // absolute FormSubmit.co URL, and the app-wide interceptors don't apply.
+      final res = await Dio().post(
+        _formsubmitEndpoint,
+        data: {
+          'rating': ratingText,
+          'subject': subjectText,
+          'message': message,
+          '_subject': 'Tayari Feedback - $subjectText ($ratingText)',
+        },
+        options: Options(headers: {
+          // Without a referring origin FormSubmit refuses the POST.
+          'Origin': _formsubmitOrigin,
+          'Referer': '$_formsubmitOrigin/',
+        }),
+      );
+      // FormSubmit reports real failures in the body, not the HTTP status: an
+      // unactivated form or a missing origin returns 200 with
+      // {"success":"false"}.
+      final data = res.data;
+      return data is Map && data['success'].toString().toLowerCase() == 'true';
+    } catch (_) {
+      return false;
     }
   }
 
