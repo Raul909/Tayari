@@ -420,7 +420,11 @@ a { color: inherit; }
 .map-placeholder {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  /* Above the map canvas, below the panels that float over the map (z 5).
+     At 5 it painted over the hazard panel, which comes earlier in the page —
+     so wherever the map loads late or not at all (low-memory phones, Save-Data,
+     2G, where it waits for a tap) the main panel was hidden behind it. */
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
